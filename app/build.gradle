@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
+android {
+    namespace 'it.lorenzo.motonav'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'it.lorenzo.motonav'
+        minSdk 24
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1." + buildNumber
+    }
+
+    // Chiave fissa: così ogni nuova versione si installa sopra la precedente
+    signingConfigs {
+        fixed {
+            storeFile file('moto-nav.keystore')
+            storePassword 'motonav'
+            keyAlias 'motonav'
+            keyPassword 'motonav'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.fixed
+        }
+        debug {
+            signingConfig signingConfigs.fixed
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

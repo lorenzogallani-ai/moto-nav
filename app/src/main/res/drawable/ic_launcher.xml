@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- cerchio arancione -->
+    <path
+        android:fillColor="#FFFF8C00"
+        android:pathData="M24,2 A22,22 0 1,1 23.99,2 Z" />
+    <!-- freccia di navigazione -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M24,9 L36,38 L24,31 L12,38 Z" />
+</vector>

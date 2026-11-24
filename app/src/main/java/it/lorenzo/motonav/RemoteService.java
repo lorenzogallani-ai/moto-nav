@@ -106,6 +106,19 @@ public class RemoteService extends Service {
     private BluetoothDevice device;
     private final Queue<BluetoothGattService> pending = new LinkedList<>();
     private boolean advertising = false;
+    private AmsClient ams;
+
+    // l'abbinamento con l'iPhone si completa dopo il collegamento: allora riscopro i servizi Apple
+    private final android.content.BroadcastReceiver bondReceiver = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(android.content.Context c, Intent i) {
+            BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+            int st = i.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1);
+            if (d != null && st == BluetoothDevice.BOND_BONDED && ams != null) ams.onBonded(d);
+            Runnable l = listener;
+            if (l != null) h.post(l);
+        }
+    };
 
     static UUID uuid(int s) {
         return UUID.fromString(String.format("0000%04x-0000-1000-8000-00805f9b34fb", s));
@@ -120,6 +133,11 @@ public class RemoteService extends Service {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        ams = new AmsClient(this, h, () -> {
+            Runnable l = listener;
+            if (l != null) l.run();
+        });
+        registerReceiver(bondReceiver, new android.content.IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED));
     }
 
     @Override
@@ -142,6 +160,11 @@ public class RemoteService extends Service {
 
     @Override
     public void onDestroy() {
+        if (ams != null) ams.stop();
+        try {
+            unregisterReceiver(bondReceiver);
+        } catch (Exception ignored) {
+        }
         try {
             if (adv != null && advertising) adv.stopAdvertising(advCallback);
         } catch (Exception ignored) {
@@ -319,6 +342,15 @@ public class RemoteService extends Service {
 
     /** Preme e rilascia un tasto multimediale. */
     void press(int bits) {
+        // prima il canale ufficiale Apple (AMS), se disponibile
+        int a = amsCommand(bits);
+        if (a >= 0 && ams != null && ams.ready && ams.command(a)) {
+            keyCount++;
+            lastSend = "via Apple (" + keyCount + ")";
+            Runnable l = listener;
+            if (l != null) h.post(l);
+            return;
+        }
         if (!connected || device == null || server == null || report == null) {
             setStatus(connected ? status : "iPhone non collegato · cerca \"" + deviceName() + "\" in Impostazioni → Bluetooth");
             return;
@@ -364,6 +396,22 @@ public class RemoteService extends Service {
         }
     }
 
+    private static int amsCommand(int bits) {
+        switch (bits) {
+            case PLAY_PAUSE: return AmsClient.CMD_TOGGLE;
+            case NEXT: return AmsClient.CMD_NEXT;
+            case PREV: return AmsClient.CMD_PREV;
+            case VOL_UP: return AmsClient.CMD_VOL_UP;
+            case VOL_DOWN: return AmsClient.CMD_VOL_DOWN;
+            default: return -1;
+        }
+    }
+
+    static String nowPlaying() {
+        RemoteService s = instance;
+        return s != null && s.ams != null ? s.ams.nowPlaying() : "";
+    }
+
     /** Riga di diagnosi: abbinamento, ricezione tasti attivata dall'iPhone, ultimo tasto. */
     static String diag() {
         RemoteService s = instance;
@@ -373,8 +421,9 @@ public class RemoteService extends Service {
                 bonded = s.device.getBondState() == BluetoothDevice.BOND_BONDED ? "sì" : "NO";
         } catch (Exception ignored) {
         }
-        return "Abbinato: " + bonded + " · Ricezione tasti: " + (notifyOn ? "sì" : "NO")
-                + " · Ultimo tasto: " + lastSend;
+        String amsState = s != null && s.ams != null ? s.ams.state : "-";
+        return "Abbinato: " + bonded + " · Canale Apple: " + amsState
+                + " · Ricezione tasti: " + (notifyOn ? "sì" : "NO") + " · Ultimo tasto: " + lastSend;
     }
 
     static void key(android.content.Context c, int bits) {
@@ -400,6 +449,10 @@ public class RemoteService extends Service {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     device = dev;
                     connected = true;
+                    // dopo un attimo apro anche il canale Apple (AMS) sullo stesso collegamento
+                    h.postDelayed(() -> {
+                        if (connected && device != null && ams != null) ams.start(device);
+                    }, 1500);
                     setStatus("Collegato a " + name(dev));
                     try {
                         // tiene aperta la connessione anche quando lo schermo si spegne
@@ -410,6 +463,7 @@ public class RemoteService extends Service {
                     if (device != null && device.equals(dev)) {
                         device = null;
                         connected = false;
+                        if (ams != null) ams.stop();
                         setStatus("iPhone scollegato · riavvicinalo, si ricollega da solo");
                         restartAdvertising();
                     }

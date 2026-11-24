@@ -70,6 +70,14 @@ public class ScooterService extends Service {
     static volatile int funWord = -1;               // bit 0 = fari sempre accesi
     static volatile int error = 0;
     static volatile String scooterName = null;
+    // diagnosi mostrata nel cruscotto
+    static volatile int seenDevices = 0, txFrames = 0, rxFrames = 0, rxBytes = 0;
+    static volatile String lastRx = "-", phase = "-";
+
+    static String diag() {
+        return "Fase: " + phase + " · visti " + seenDevices + " · inviati " + txFrames
+                + " · ricevuti " + rxFrames + " (" + rxBytes + " B) · ultimo: " + lastRx;
+    }
     static ScooterService instance;
 
     private static final int STAGE_IDLE = 0, STAGE_PRE = 1, STAGE_PAIR = 2, STAGE_AUTH = 3, STAGE_COMM = 4;
@@ -91,6 +99,8 @@ public class ScooterService extends Service {
     private int pollTick = 0;
     private long lastFrame = 0;
     private boolean stopping = false;
+    private int bleAddr = BLE;          // modulo Bluetooth del monopattino: 0x21 (G30) o 0x04 (modelli nuovi)
+    private int connectFails = 0;
     private long lastNotif = 0;
 
     private final Runnable preR = this::sendPre;
@@ -172,6 +182,12 @@ public class ScooterService extends Service {
     }
 
     private void scan() {
+        phase = "ricerca";
+        seenDevices = 0;
+        if (!locationOn()) {
+            fail("Accendi la Posizione (GPS) dell'orologio: Android la richiede per cercare il monopattino");
+            return;
+        }
         scanner = ad.getBluetoothLeScanner();
         if (scanner == null) {
             fail("Non riesco a cercare dispositivi Bluetooth");
@@ -206,7 +222,9 @@ public class ScooterService extends Service {
                 if (ids != null) for (ParcelUuid u : ids) if (NUS.equals(u.getUuid()) || NB.equals(u.getUuid())) nus = true;
             }
             if (name == null) name = r.getDevice().getName();
-            if (name == null) return;
+            seenDevices++;
+            if (name == null && !nus) return;
+            if (name == null) name = r.getDevice().getName() != null ? r.getDevice().getName() : "";
             String n = name.toUpperCase();
             boolean looks = n.startsWith("NB") || n.contains("MAX") || n.contains("NINEBOT") || n.contains("G30") || n.contains("SEGWAY");
             if (!looks && !nus) return;
@@ -215,7 +233,9 @@ public class ScooterService extends Service {
             h.post(() -> {
                 if (!scanning) return;
                 stopScan();
-                connect(dev, fname);
+                setStatus("Trovato " + fname + ", mi collego…");
+                // alcuni Bluetooth MediaTek falliscono se ci si collega subito dopo la ricerca
+                h.postDelayed(() -> connect(dev, fname), 500);
             });
         }
 
@@ -228,6 +248,16 @@ public class ScooterService extends Service {
         }
     };
 
+    private boolean locationOn() {
+        try {
+            android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+            return lm != null && (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+                    || lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER));
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
     private void stopScan() {
         if (scanning && scanner != null) {
             try {
@@ -239,7 +269,8 @@ public class ScooterService extends Service {
     }
 
     private void connect(BluetoothDevice dev, String name) {
-        devName = name != null ? name : dev.getName();
+        phase = "collegamento";
+        devName = name != null && !name.isEmpty() ? name : dev.getName();
         scooterName = devName;
         setStatus("Mi collego a " + (devName != null ? devName : "monopattino") + "…");
         closeGatt();
@@ -289,13 +320,28 @@ public class ScooterService extends Service {
             h.post(() -> {
                 if (g != gatt) return;
                 if (ns == BluetoothProfile.STATE_CONNECTED) {
+                    phase = "servizi";
                     setStatus("Collegato, preparo la comunicazione…");
-                    g.discoverServices();
+                    // una piccola pausa prima di leggere i servizi aiuta i Bluetooth più vecchi
+                    h.postDelayed(() -> {
+                        if (g == gatt) g.discoverServices();
+                    }, 600);
                 } else if (ns == BluetoothProfile.STATE_DISCONNECTED) {
                     boolean wasReady = ready;
                     closeGatt();
                     speed = Double.NaN;
                     if (stopping) return;
+                    if (!wasReady) {
+                        connectFails++;
+                        phase = "collegamento fallito (codice " + st + ", tentativo " + connectFails + ")";
+                        if (connectFails >= 3 && store.scooterMac() == null) {
+                            connectFails = 0;
+                            fail("Non riesco a collegarmi (codice " + st + "). Spegni e riaccendi il monopattino, poi RIPROVA");
+                            return;
+                        }
+                    } else {
+                        connectFails = 0;
+                    }
                     setStatus(wasReady ? "Monopattino scollegato, riprovo…" : "Collegamento non riuscito, riprovo…");
                     h.postDelayed(ScooterService.this::begin, 3000);
                 }
@@ -318,6 +364,7 @@ public class ScooterService extends Service {
                     closeGatt();
                     return;
                 }
+                phase = (NUS_RX.equals(rxId) ? "servizio Nordic" : "servizio Ninebot") + ", attivo notifiche";
                 tx = s.getCharacteristic(txId);
                 BluetoothGattCharacteristic rx = s.getCharacteristic(rxId);
                 if (tx == null || rx == null) {
@@ -363,6 +410,10 @@ public class ScooterService extends Service {
     // ================= abbinamento cifrato =================
 
     private void startHandshake() {
+        txFrames = 0;
+        rxFrames = 0;
+        rxBytes = 0;
+        lastRx = "-";
         stage = STAGE_PRE;
         plain = false;
         tries = 0;
@@ -373,7 +424,7 @@ public class ScooterService extends Service {
     private void sendPre() {
         if (stage != STAGE_PRE || gatt == null) return;
         tries++;
-        if (tries > 4) {
+        if (tries > 6) {
             // nessuna risposta cifrata: provo il vecchio protocollo in chiaro
             plain = true;
             stage = STAGE_COMM;
@@ -384,7 +435,9 @@ public class ScooterService extends Service {
             return;
         }
         crypto = new NbCrypto(devName != null ? devName : "");
-        send(frame(BLE, 0x5B, 0x00, new byte[0]));
+        bleAddr = (tries % 2 == 1) ? BLE : 0x04;
+        phase = "abbinamento 1/3 (5B a 0x" + Integer.toHexString(bleAddr) + ")";
+        send(frame(bleAddr, 0x5B, 0x00, new byte[0]));
         h.postDelayed(preR, 1500);
     }
 
@@ -402,7 +455,8 @@ public class ScooterService extends Service {
             needButton = true;
             setStatus("Premi una volta il pulsante di accensione del monopattino per abbinarlo");
         }
-        send(frame(BLE, 0x5C, 0x00, store.scooterKey()));
+        phase = "abbinamento 2/3 (5C)";
+        send(frame(bleAddr, 0x5C, 0x00, store.scooterKey()));
         h.postDelayed(pairR, 1000);
     }
 
@@ -415,7 +469,8 @@ public class ScooterService extends Service {
             startHandshake();
             return;
         }
-        send(frame(BLE, 0x5D, 0x00, serial));
+        phase = "abbinamento 3/3 (5D)";
+        send(frame(bleAddr, 0x5D, 0x00, serial));
         h.postDelayed(authR, 1500);
     }
 
@@ -495,6 +550,7 @@ public class ScooterService extends Service {
     private void send(byte[] f) {
         if (gatt == null || tx == null) return;
         byte[] wire = plain ? withChecksum(f) : crypto.encrypt(f);
+        txFrames++;
         for (int i = 0; i < wire.length; i += 20) {
             int n = Math.min(20, wire.length - i);
             byte[] c = new byte[n];
@@ -513,7 +569,9 @@ public class ScooterService extends Service {
             return;
         }
         tx.setValue(c);
-        tx.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+        tx.setWriteType((tx.getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
+                ? BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         writing = gatt.writeCharacteristic(tx);
         writeStart = SystemClock.elapsedRealtime();
         if (!writing) {
@@ -523,6 +581,10 @@ public class ScooterService extends Service {
     }
 
     private void onData(byte[] v) {
+        rxBytes += v.length;
+        StringBuilder hx = new StringBuilder();
+        for (int i = 0; i < Math.min(8, v.length); i++) hx.append(String.format("%02X", v[i]));
+        lastRx = hx.toString();
         inbuf.write(v, 0, v.length);
         byte[] b = inbuf.toByteArray();
         int pos = 0;
@@ -577,8 +639,11 @@ public class ScooterService extends Service {
         byte[] p = new byte[Math.max(0, plen)];
         System.arraycopy(d, 7, p, 0, p.length);
         lastFrame = SystemClock.elapsedRealtime();
+        rxFrames++;
 
-        if (src == BLE && cmd == 0x5B && stage == STAGE_PRE && p.length >= 30) {
+        boolean fromBle = src == BLE || src == 0x04;
+        if (fromBle && cmd == 0x5B && stage == STAGE_PRE && p.length >= 30) {
+            bleAddr = src;
             serial = new byte[14];
             System.arraycopy(p, 16, serial, 0, 14);
             stage = STAGE_PAIR;
@@ -587,7 +652,7 @@ public class ScooterService extends Service {
             setStatus("Abbino il monopattino…");
             h.removeCallbacks(preR);
             sendPair();
-        } else if (src == BLE && cmd == 0x5C && stage == STAGE_PAIR) {
+        } else if (fromBle && cmd == 0x5C && stage == STAGE_PAIR) {
             if (arg == 0x01) {
                 stage = STAGE_AUTH;
                 needButton = false;
@@ -595,11 +660,12 @@ public class ScooterService extends Service {
                 h.removeCallbacks(pairR);
                 sendAuth();
             }
-        } else if (src == BLE && cmd == 0x5D && stage == STAGE_AUTH) {
+        } else if (fromBle && cmd == 0x5D && stage == STAGE_AUTH) {
             h.removeCallbacks(authR);
             if (arg == 0x01) {
                 stage = STAGE_COMM;
                 ready = true;
+                phase = "dati";
                 if (gatt != null) store.setScooter(gatt.getDevice().getAddress(), devName);
                 setStatus("Collegato a " + devName);
                 startPolling();

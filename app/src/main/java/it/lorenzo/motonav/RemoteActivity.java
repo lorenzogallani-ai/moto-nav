@@ -118,7 +118,8 @@ public class RemoteActivity extends Activity {
     private void showStatus() {
         statusView.setText(RemoteService.status);
         statusView.setTextColor(RemoteService.connected ? 0xFF81C784 : 0xFFDDDDDD);
-        diagView.setText(RemoteService.diag());
+        String np = RemoteService.nowPlaying();
+        diagView.setText((np.isEmpty() ? "" : "♪ " + np + "\n") + RemoteService.diag());
     }
 
     /** Tenendo premuto il volume, continua a salire/scendere. */

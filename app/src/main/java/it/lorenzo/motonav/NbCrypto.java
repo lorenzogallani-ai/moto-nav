@@ -59,7 +59,7 @@ class NbCrypto {
             out[payloadLen + 7] = (byte) ((msgIt >> 8) & 0xFF);
             out[payloadLen + 8] = (byte) (msgIt & 0xFF);
             if (data.length >= 23 && (data[0] & 0xFF) == 0x5A && (data[1] & 0xFF) == 0xA5
-                    && data[2] == 0x10 && data[3] == 0x3E && data[4] == 0x21
+                    && data[2] == 0x10 && data[3] == 0x3E && (data[4] == 0x21 || data[4] == 0x04)
                     && data[5] == 0x5C && data[6] == 0x00) {
                 System.arraycopy(data, 7, randomApp, 0, 16);
             }
@@ -85,7 +85,7 @@ class NbCrypto {
             payload = cryptoFirst(payload);
             System.arraycopy(payload, 0, dec, 3, payloadLen);
             if ((dec[0] & 0xFF) == 0x5A && (dec[1] & 0xFF) == 0xA5 && dec[2] == 0x1E
-                    && dec[3] == 0x21 && dec[4] == 0x3E && dec[5] == 0x5B && dec.length >= 23) {
+                    && (dec[3] == 0x21 || dec[3] == 0x04) && dec[4] == 0x3E && dec[5] == 0x5B && dec.length >= 23) {
                 System.arraycopy(dec, 7, randomBle, 0, 16);
                 sha1Key(name, randomBle);
             }
@@ -94,7 +94,7 @@ class NbCrypto {
             payload = cryptoNext(payload, newIt);
             System.arraycopy(payload, 0, dec, 3, payloadLen);
             if ((dec[0] & 0xFF) == 0x5A && (dec[1] & 0xFF) == 0xA5 && dec[2] == 0x00
-                    && dec[3] == 0x21 && dec[4] == 0x3E && dec[5] == 0x5C && dec[6] == 0x01) {
+                    && (dec[3] == 0x21 || dec[3] == 0x04) && dec[4] == 0x3E && dec[5] == 0x5C && dec[6] == 0x01) {
                 sha1Key(randomApp, randomBle);
             }
             msgIt = newIt;

@@ -27,6 +27,7 @@ public class ScooterActivity extends Activity {
     private static final int TEAL = 0xFF00838F;
 
     private final Handler h = new Handler(Looper.getMainLooper());
+    private TextView diagView;
     private TextView statusView, speedView, unitView, batView, rangeView, lightBtn;
     private View batFill, batRest;
     private final TextView[] modeBtns = new TextView[3];
@@ -59,6 +60,9 @@ public class ScooterActivity extends Activity {
             if (!ScooterService.ready) start();
         });
         root.addView(statusView, new LinearLayout.LayoutParams(-1, -2));
+        diagView = text("", 11, 0xFF8A8A8A, false);
+        diagView.setGravity(Gravity.CENTER);
+        root.addView(diagView, new LinearLayout.LayoutParams(-1, -2));
 
         // velocità
         LinearLayout sp = new LinearLayout(this);
@@ -173,6 +177,7 @@ public class ScooterActivity extends Activity {
 
     private void render() {
         boolean ok = ScooterService.ready;
+        diagView.setText(ScooterService.diag());
         if (ok) {
             String n = ScooterService.scooterName;
             statusView.setText(ScooterService.error != 0

@@ -52,25 +52,40 @@ public class RemoteService extends Service {
     static final int VOICE = 0x40;   // "Voice Command": Siri
     static final int POWER = 0x80;   // tasto laterale: tenuto 2 secondi apre Siri
 
+    // Struttura come le tastiere Bluetooth compatibili con iPhone: tastiera (ID 1) + tasti multimediali (ID 2, 16 bit)
     private static final byte[] REPORT_MAP = {
-            0x05, 0x0C,             // Usage Page (Consumer)
-            0x09, 0x01,             // Usage (Consumer Control)
-            (byte) 0xA1, 0x01,      // Collection (Application)
-            (byte) 0x85, 0x01,      //   Report ID 1
-            0x15, 0x00,             //   Logical Minimum 0
-            0x25, 0x01,             //   Logical Maximum 1
-            0x75, 0x01,             //   Report Size 1
-            (byte) 0x95, 0x08,      //   Report Count 8
-            0x09, (byte) 0xCD,      //   Play/Pause
-            0x09, (byte) 0xB5,      //   Scan Next Track
-            0x09, (byte) 0xB6,      //   Scan Previous Track
-            0x09, (byte) 0xE9,      //   Volume Increment
-            0x09, (byte) 0xEA,      //   Volume Decrement
-            0x09, (byte) 0xE2,      //   Mute
-            0x09, (byte) 0xCF,      //   Voice Command (Siri)
-            0x09, 0x30,             //   Power (tasto laterale)
-            (byte) 0x81, 0x02,      //   Input (Data, Variable, Absolute)
-            (byte) 0xC0             // End Collection
+            // --- tastiera (ID 1): serve perché iOS tratti l'orologio come un vero dispositivo di comando ---
+            0x05, 0x01, 0x09, 0x06, (byte) 0xA1, 0x01, (byte) 0x85, 0x01,
+            0x05, 0x07, 0x19, (byte) 0xE0, 0x29, (byte) 0xE7, 0x15, 0x00, 0x25, 0x01,
+            0x75, 0x01, (byte) 0x95, 0x08, (byte) 0x81, 0x02,                 // modificatori
+            (byte) 0x95, 0x01, 0x75, 0x08, (byte) 0x81, 0x01,                 // riservato
+            (byte) 0x95, 0x05, 0x75, 0x01, 0x05, 0x08, 0x19, 0x01, 0x29, 0x05,
+            (byte) 0x91, 0x02,                                                // LED (output)
+            (byte) 0x95, 0x01, 0x75, 0x03, (byte) 0x91, 0x01,                 // riempimento LED
+            (byte) 0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65,
+            0x05, 0x07, 0x19, 0x00, 0x29, 0x65, (byte) 0x81, 0x00,            // 6 tasti
+            (byte) 0xC0,
+            // --- tasti multimediali (ID 2), un bit per tasto ---
+            0x05, 0x0C, 0x09, 0x01, (byte) 0xA1, 0x01, (byte) 0x85, 0x02,
+            0x15, 0x00, 0x25, 0x01, 0x75, 0x01, (byte) 0x95, 0x10,
+            0x09, (byte) 0xCD,          // bit 0  Play/Pausa
+            0x09, (byte) 0xB5,          // bit 1  Brano successivo
+            0x09, (byte) 0xB6,          // bit 2  Brano precedente
+            0x09, (byte) 0xE9,          // bit 3  Volume +
+            0x09, (byte) 0xEA,          // bit 4  Volume -
+            0x09, (byte) 0xE2,          // bit 5  Muto
+            0x09, (byte) 0xCF,          // bit 6  Comando vocale (Siri)
+            0x09, 0x30,                 // bit 7  Accensione (tasto laterale)
+            0x0A, 0x23, 0x02,           // bit 8  Home
+            0x09, (byte) 0xB7,          // bit 9  Stop
+            0x0A, 0x21, 0x02,           // bit 10 Cerca
+            0x0A, 0x24, 0x02,           // bit 11 Indietro
+            0x0A, 0x25, 0x02,           // bit 12 Avanti
+            0x0A, 0x26, 0x02,           // bit 13 Stop
+            0x0A, 0x27, 0x02,           // bit 14 Aggiorna
+            0x0A, 0x2A, 0x02,           // bit 15 Preferiti
+            (byte) 0x81, 0x02,
+            (byte) 0xC0
     };
 
     private static final UUID HID = uuid(0x1812);
@@ -114,7 +129,14 @@ public class RemoteService extends Service {
         public void onReceive(android.content.Context c, Intent i) {
             BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
             int st = i.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1);
-            if (d != null && st == BluetoothDevice.BOND_BONDED && ams != null) ams.onBonded(d);
+            if (d != null && st == BluetoothDevice.BOND_BONDED && ams != null) {
+                RemoteService self = instance;
+                if (self != null && self.connected && d.equals(self.device)) {
+                    h.postDelayed(() -> {
+                        if (connected && device != null) ams.start(device);
+                    }, 1500);
+                }
+            }
             Runnable l = listener;
             if (l != null) h.post(l);
         }
@@ -246,20 +268,37 @@ public class RemoteService extends Service {
         proto.setValue(new byte[]{0x01}); // modalità "report"
         s.addCharacteristic(proto);
 
-        report = new BluetoothGattCharacteristic(HID_REPORT,
+        // tastiera, input (ID 1): non lo usiamo, ma iOS se lo aspetta
+        s.addCharacteristic(inputReport(1, 8));
+        // tastiera, output (ID 1): l'iPhone ci scrive lo stato dei LED
+        BluetoothGattCharacteristic out = new BluetoothGattCharacteristic(HID_REPORT,
+                BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_WRITE
+                        | BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
+                BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED | BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED);
+        out.setValue(new byte[]{0});
+        BluetoothGattDescriptor outRef = new BluetoothGattDescriptor(REPORT_REF, BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED);
+        outRef.setValue(new byte[]{0x01, 0x02});
+        out.addDescriptor(outRef);
+        s.addCharacteristic(out);
+        // tasti multimediali, input (ID 2): è quello che usiamo
+        report = inputReport(2, 2);
+        s.addCharacteristic(report);
+        return s;
+    }
+
+    private BluetoothGattCharacteristic inputReport(int id, int size) {
+        BluetoothGattCharacteristic c = new BluetoothGattCharacteristic(HID_REPORT,
                 BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_NOTIFY,
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED);
-        report.setValue(new byte[]{0});
+        c.setValue(new byte[size]);
         BluetoothGattDescriptor cccd = new BluetoothGattDescriptor(CCCD,
                 BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE);
         cccd.setValue(BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE);
-        report.addDescriptor(cccd);
-        BluetoothGattDescriptor ref = new BluetoothGattDescriptor(REPORT_REF,
-                BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED);
-        ref.setValue(new byte[]{0x01, 0x01}); // report ID 1, tipo input
-        report.addDescriptor(ref);
-        s.addCharacteristic(report);
-        return s;
+        c.addDescriptor(cccd);
+        BluetoothGattDescriptor ref = new BluetoothGattDescriptor(REPORT_REF, BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED);
+        ref.setValue(new byte[]{(byte) id, 0x01}); // ID, tipo input
+        c.addDescriptor(ref);
+        return c;
     }
 
     private BluetoothGattService batteryService() {
@@ -355,8 +394,8 @@ public class RemoteService extends Service {
             setStatus(connected ? status : "iPhone non collegato · cerca \"" + deviceName() + "\" in Impostazioni → Bluetooth");
             return;
         }
-        send((byte) bits);
-        h.postDelayed(() -> send((byte) 0), 60);
+        send(bits);
+        h.postDelayed(() -> send(0), 80);
     }
 
     /** Tiene premuto un tasto per un certo tempo (es. tasto laterale per Siri). */
@@ -365,8 +404,8 @@ public class RemoteService extends Service {
             press(bits); // mostra il messaggio "iPhone non collegato"
             return;
         }
-        send((byte) bits);
-        h.postDelayed(() -> send((byte) 0), ms);
+        send(bits);
+        h.postDelayed(() -> send(0), ms);
     }
 
     /** Attiva Siri con il metodo scelto nelle impostazioni. */
@@ -381,9 +420,9 @@ public class RemoteService extends Service {
         }
     }
 
-    private void send(byte v) {
+    private void send(int v) {
         try {
-            report.setValue(new byte[]{v});
+            report.setValue(new byte[]{(byte) (v & 0xFF), (byte) ((v >> 8) & 0xFF)});
             boolean ok = server.notifyCharacteristicChanged(device, report, false);
             if (v != 0) {
                 keyCount++;
@@ -449,10 +488,19 @@ public class RemoteService extends Service {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     device = dev;
                     connected = true;
-                    // dopo un attimo apro anche il canale Apple (AMS) sullo stesso collegamento
                     h.postDelayed(() -> {
-                        if (connected && device != null && ams != null) ams.start(device);
-                    }, 1500);
+                        if (!connected || device == null) return;
+                        try {
+                            if (device.getBondState() == BluetoothDevice.BOND_BONDED) {
+                                // abbinato: apro anche il canale Apple (AMS) sullo stesso collegamento
+                                if (ams != null) ams.start(device);
+                            } else if (device.getBondState() == BluetoothDevice.BOND_NONE) {
+                                // l'iPhone non ha chiesto l'abbinamento: lo chiedo io (compare il popup sull'iPhone)
+                                device.createBond();
+                            }
+                        } catch (Exception ignored) {
+                        }
+                    }, 2500);
                     setStatus("Collegato a " + name(dev));
                     try {
                         // tiene aperta la connessione anche quando lo schermo si spegne
@@ -493,8 +541,7 @@ public class RemoteService extends Service {
         public void onDescriptorWriteRequest(BluetoothDevice dev, int id, BluetoothGattDescriptor d,
                                              boolean prepared, boolean needResponse, int offset, byte[] value) {
             if (value != null) d.setValue(value);
-            if (CCCD.equals(d.getUuid()) && d.getCharacteristic() != null
-                    && HID_REPORT.equals(d.getCharacteristic().getUuid()) && value != null && value.length > 0) {
+            if (CCCD.equals(d.getUuid()) && d.getCharacteristic() == report && value != null && value.length > 0) {
                 notifyOn = (value[0] & 0x01) != 0;
                 Runnable l = listener;
                 if (l != null) h.post(l);

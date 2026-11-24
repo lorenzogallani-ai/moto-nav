@@ -56,6 +56,15 @@ class AmsClient {
         discoverTries = 0;
         state = "collegamento…";
         changed();
+        // se in 10 secondi non si apre, lascio perdere: resta il telecomando classico
+        final BluetoothDevice mine = d;
+        h.postDelayed(() -> {
+            if (!ready && dev == mine && gatt != null && state.startsWith("collegamento")) {
+                stop();
+                state = "non disponibile";
+                changed();
+            }
+        }, 10000);
         try {
             gatt = Build.VERSION.SDK_INT >= 23
                     ? d.connectGatt(ctx, false, cb, BluetoothDevice.TRANSPORT_LE)

@@ -596,6 +596,7 @@ public class MainActivity extends Activity {
                         : android.view.KeyEvent.keyCodeToString(store.siriKey()).replace("KEYCODE_", "")),
                 "Come attivare Siri: " + ("laterale".equals(store.siriMethod())
                         ? "tasto laterale tenuto" : "comando vocale"),
+                "Canale Apple per la musica: " + (store.amsEnabled() ? "attivo" : "spento"),
                 "Versione " + versionName() + " · installati: " + Nav.installedLabel(this)
         };
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -623,6 +624,11 @@ public class MainActivity extends Activity {
                             toast("laterale".equals(store.siriMethod())
                                     ? "Siri come tenere premuto il tasto laterale dell'iPhone (serve \"Premi tasto laterale per Siri\" attivo sull'iPhone)"
                                     : "Siri con il comando vocale Bluetooth");
+                            settingsDialog();
+                            break;
+                        case 8:
+                            store.setAmsEnabled(!store.amsEnabled());
+                            toast(store.amsEnabled() ? "Canale Apple attivo: vale dal prossimo collegamento dell'iPhone" : "Canale Apple spento");
                             settingsDialog();
                             break;
                         default: break;

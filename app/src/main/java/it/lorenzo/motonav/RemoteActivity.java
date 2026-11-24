@@ -41,7 +41,9 @@ public class RemoteActivity extends Activity {
         root.addView(statusView, new LinearLayout.LayoutParams(-1, -2));
         diagView = new TextView(this);
         diagView.setTextColor(0xFF9A9A9A);
-        diagView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        diagView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        diagView.setMaxLines(11);
+        diagView.setGravity(Gravity.START);
         diagView.setGravity(Gravity.CENTER);
         diagView.setPadding(dp(4), 0, dp(4), dp(4));
         root.addView(diagView, new LinearLayout.LayoutParams(-1, -2));
@@ -119,7 +121,9 @@ public class RemoteActivity extends Activity {
         statusView.setText(RemoteService.status);
         statusView.setTextColor(RemoteService.connected ? 0xFF81C784 : 0xFFDDDDDD);
         String np = RemoteService.nowPlaying();
-        diagView.setText((np.isEmpty() ? "" : "♪ " + np + "\n") + RemoteService.diag());
+        String log = RemoteService.eventLog();
+        diagView.setText((np.isEmpty() ? "" : "♪ " + np + "\n") + RemoteService.diag()
+                + (log.isEmpty() ? "" : "\n" + log));
     }
 
     /** Tenendo premuto il volume, continua a salire/scendere. */

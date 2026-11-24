@@ -110,6 +110,24 @@ public class RemoteService extends Service {
     static volatile boolean notifyOn = false;
     static volatile String lastSend = "nessuno";
     static volatile int keyCount = 0;
+    private static final java.util.LinkedList<String> events = new java.util.LinkedList<>();
+    private static int mapReads = 0;
+
+    /** Diario del collegamento: le ultime 8 cose successe, con l'orario. */
+    static synchronized void log(String e) {
+        String t = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ITALY).format(new java.util.Date());
+        events.addFirst(t + " " + e);
+        while (events.size() > 8) events.removeLast();
+        Runnable l = listener;
+        RemoteService s = instance;
+        if (l != null && s != null) s.h.post(l);
+    }
+
+    static synchronized String eventLog() {
+        StringBuilder sb = new StringBuilder();
+        for (String e : events) sb.append(e).append('\n');
+        return sb.toString().trim();
+    }
     static RemoteService instance;
 
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -129,7 +147,9 @@ public class RemoteService extends Service {
         public void onReceive(android.content.Context c, Intent i) {
             BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
             int st = i.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1);
-            if (d != null && st == BluetoothDevice.BOND_BONDED && ams != null) {
+            if (d != null) log("abbinamento " + name(d) + ": " + (st == BluetoothDevice.BOND_BONDED ? "COMPLETATO"
+                    : st == BluetoothDevice.BOND_BONDING ? "in corso…" : "annullato/assente"));
+            if (d != null && st == BluetoothDevice.BOND_BONDED && ams != null && new Store(c).amsEnabled()) {
                 RemoteService self = instance;
                 if (self != null && self.connected && d.equals(self.device)) {
                     h.postDelayed(() -> {
@@ -362,6 +382,7 @@ public class RemoteService extends Service {
     private final AdvertiseCallback advCallback = new AdvertiseCallback() {
         @Override
         public void onStartSuccess(AdvertiseSettings s) {
+            log("visibile per l'iPhone come \"" + deviceName() + "\"");
             advertising = true;
             if (!connected) setStatus("In attesa dell'iPhone · cerca \"" + deviceName() + "\" in Impostazioni → Bluetooth");
         }
@@ -427,6 +448,7 @@ public class RemoteService extends Service {
             if (v != 0) {
                 keyCount++;
                 lastSend = ok ? "partito (" + keyCount + ")" : "rifiutato da Android";
+                if (!ok) log("tasto rifiutato da Android");
                 Runnable l = listener;
                 if (l != null) h.post(l);
             }
@@ -492,22 +514,28 @@ public class RemoteService extends Service {
                         if (!connected || device == null) return;
                         try {
                             if (device.getBondState() == BluetoothDevice.BOND_BONDED) {
-                                // abbinato: apro anche il canale Apple (AMS) sullo stesso collegamento
-                                if (ams != null) ams.start(device);
+                                // abbinato: apro anche il canale Apple (AMS), se attivato nelle impostazioni
+                                if (ams != null && new Store(RemoteService.this).amsEnabled()) {
+                                    log("apro il canale Apple");
+                                    ams.start(device);
+                                }
                             } else if (device.getBondState() == BluetoothDevice.BOND_NONE) {
                                 // l'iPhone non ha chiesto l'abbinamento: lo chiedo io (compare il popup sull'iPhone)
+                                log("l'iPhone non ha abbinato: lo chiedo io");
                                 device.createBond();
                             }
                         } catch (Exception ignored) {
                         }
                     }, 2500);
                     setStatus("Collegato a " + name(dev));
+                    log("collegato " + name(dev) + " · abbinato: " + bondText(dev));
                     try {
                         // tiene aperta la connessione anche quando lo schermo si spegne
                         if (server != null) server.connect(dev, false);
                     } catch (Exception ignored) {
                     }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    log("SCOLLEGATO " + name(dev) + " (codice " + st + ")");
                     if (device != null && device.equals(dev)) {
                         device = null;
                         connected = false;
@@ -522,6 +550,7 @@ public class RemoteService extends Service {
         @Override
         public void onCharacteristicReadRequest(BluetoothDevice dev, int id, int offset, BluetoothGattCharacteristic c) {
             if (BATTERY_LEVEL.equals(c.getUuid())) c.setValue(new byte[]{(byte) batteryPct()});
+            if (HID_REPORT_MAP.equals(c.getUuid()) && offset == 0) log("l'iPhone legge la struttura (" + (++mapReads) + ")");
             respond(dev, id, offset, c.getValue());
         }
 
@@ -529,6 +558,8 @@ public class RemoteService extends Service {
         public void onCharacteristicWriteRequest(BluetoothDevice dev, int id, BluetoothGattCharacteristic c,
                                                  boolean prepared, boolean needResponse, int offset, byte[] value) {
             if (value != null) c.setValue(value);
+            if (HID_REPORT.equals(c.getUuid())) log("l'iPhone scrive i LED: mi vede come tastiera ✓");
+            if (HID_PROTOCOL.equals(c.getUuid())) log("l'iPhone imposta il protocollo");
             if (needResponse && server != null) server.sendResponse(dev, id, BluetoothGatt.GATT_SUCCESS, 0, null);
         }
 
@@ -543,6 +574,7 @@ public class RemoteService extends Service {
             if (value != null) d.setValue(value);
             if (CCCD.equals(d.getUuid()) && d.getCharacteristic() == report && value != null && value.length > 0) {
                 notifyOn = (value[0] & 0x01) != 0;
+                log("ricezione tasti " + (notifyOn ? "ATTIVATA dall'iPhone" : "disattivata"));
                 Runnable l = listener;
                 if (l != null) h.post(l);
             }
@@ -579,6 +611,15 @@ public class RemoteService extends Service {
             return n != null ? n : "orologio";
         } catch (Exception e) {
             return "orologio";
+        }
+    }
+
+    private static String bondText(BluetoothDevice d) {
+        try {
+            int b = d.getBondState();
+            return b == BluetoothDevice.BOND_BONDED ? "sì" : b == BluetoothDevice.BOND_BONDING ? "in corso" : "no";
+        } catch (Exception e) {
+            return "?";
         }
     }
 

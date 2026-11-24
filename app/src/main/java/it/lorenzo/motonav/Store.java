@@ -130,6 +130,10 @@ class Store {
     boolean setupShown() { return p.getBoolean("setupShown", false); }
     void setSetupShown() { p.edit().putBoolean("setupShown", true).apply(); }
 
+    /** Canale Apple (AMS) per la musica: spento di default, su alcuni orologi fa cadere il collegamento. */
+    boolean amsEnabled() { return p.getBoolean("amsEnabled", false); }
+    void setAmsEnabled(boolean v) { p.edit().putBoolean("amsEnabled", v).apply(); }
+
     // ---------- Siri ----------
 
     /** "voce" = comando vocale HID; "laterale" = tasto laterale tenuto 2 s */

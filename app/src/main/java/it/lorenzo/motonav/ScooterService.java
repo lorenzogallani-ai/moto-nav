@@ -83,7 +83,8 @@ public class ScooterService extends Service {
 
     static String diag() {
         return "Fase: " + phase + " · visti " + seenDevices + " · inviati " + txFrames
-                + " · ricevuti " + rxFrames + " (" + rxBytes + " B) · ultimo: " + lastRx;
+                + " · ricevuti " + rxFrames + " (" + rxBytes + " B) · ultimo: " + lastRx
+                + "\nmodo75=" + rawMode + " marcia F1=" + rawGear + " luci7D=" + raw7d + " luci80=" + raw80;
     }
     static ScooterService instance;
 
@@ -116,12 +117,17 @@ public class ScooterService extends Service {
     private boolean notifyStarted = false;
 
     private boolean isG2() {
-        return bleAddr == 0x04;
+        return bleAddr == 0x04 || g2Seen;
     }
 
     private int funReg() {
-        return isG2() ? REG_FUN_G2 : REG_FUN;
+        return fun7dSeen || isG2() ? REG_FUN_G2 : REG_FUN;
     }
+
+    // valori grezzi letti, mostrati nella diagnosi per capire come il G2 codifica modalità e luci
+    private static final int REG_GEAR_G2 = 0xF1;
+    private boolean g2Seen = false, fun7dSeen = false;
+    static volatile int rawMode = -1, rawGear = -1, raw7d = -1, raw80 = -1;
     private long lastNotif = 0;
 
     private final Runnable preR = this::sendPre;
@@ -404,12 +410,12 @@ public class ScooterService extends Service {
         public void onServicesDiscovered(final BluetoothGatt g, int st) {
             h.post(() -> {
                 if (g != gatt) return;
-                BluetoothGattService s = g.getService(NB);
-                UUID rxId = NB_RX, txId = NB_TX;
-                if (s == null || s.getCharacteristic(NB_RX) == null) {
-                    s = g.getService(NUS);
-                    rxId = NUS_RX;
-                    txId = NUS_TX;
+                BluetoothGattService s = g.getService(NUS);
+                UUID rxId = NUS_RX, txId = NUS_TX;
+                if (s == null || s.getCharacteristic(NUS_RX) == null) {
+                    s = g.getService(NB);
+                    rxId = NB_RX;
+                    txId = NB_TX;
                 }
                 if (s == null) {
                     fail("Questo dispositivo non sembra un monopattino Ninebot");
@@ -427,15 +433,7 @@ public class ScooterService extends Service {
                 rxChar = rx;
                 notifyStarted = false;
                 phase += " · MTU";
-                boolean asked = false;
-                try {
-                    asked = g.requestMtu(185);
-                } catch (Exception ignored) {
-                }
-                if (!asked) enableNotify();
-                else h.postDelayed(() -> {
-                    if (g == gatt && !notifyStarted) enableNotify();
-                }, 1500);
+                enableNotify();
             });
         }
 
@@ -443,7 +441,7 @@ public class ScooterService extends Service {
         public void onMtuChanged(BluetoothGatt g, int mtu, int st) {
             h.post(() -> {
                 if (g != gatt) return;
-                if (st == BluetoothGatt.GATT_SUCCESS && mtu > 23) chunk = Math.min(mtu - 3, 180);
+                // pacchetti sempre da 20 byte: con pacchetti più grandi il monopattino smetteva di rispondere
                 if (!notifyStarted) enableNotify();
             });
         }
@@ -514,7 +512,7 @@ public class ScooterService extends Service {
             return;
         }
         crypto = new NbCrypto(devName != null ? devName : "");
-        bleAddr = (tries % 2 == 1) ? 0x04 : BLE;
+        bleAddr = (tries % 2 == 1) ? BLE : 0x04;
         phase = "abbinamento 1/3 (5B a 0x" + Integer.toHexString(bleAddr) + ")";
         send(frame(bleAddr, 0x5B, 0x00, new byte[0]));
         h.postDelayed(preR, 1500);
@@ -571,27 +569,16 @@ public class ScooterService extends Service {
                 closeGatt();
                 return;
             }
-            if (ctrlAddr < 0) {
-                // chiedo la batteria a tutte le schede possibili: chi risponde è quella giusta
-                int[] cand = {ESC, 0x01, 0x02};
-                if (pollTick % 2 == 0) {
-                    for (int a : cand) send(frame(a, READ, REG_BATT, new byte[]{0x02}));
-                    probeRound++;
-                    phase = "cerco la scheda dati (" + probeRound + ")";
-                    if (probeRound > 8) {
-                        ctrlAddr = ESC;
-                        phase = "dati da 0x20 (predefinito)";
-                    }
-                }
-            } else if (out.size() < 8) {
-                send(frame(ctrlAddr, READ, REG_SPEED, new byte[]{0x02}));
-                if (pollTick % 4 == 0) {
-                    send(frame(ctrlAddr, READ, REG_BATT, new byte[]{0x02}));
-                    send(frame(ctrlAddr, READ, REG_RANGE, new byte[]{0x02}));
-                }
-                if (pollTick % 12 == 0) {
+            if (ctrlAddr < 0) ctrlAddr = ESC;
+            phase = "dati";
+            if (out.size() < 8) {
+                // blocco rapido 0xB0: velocità, batteria, autonomia in una sola lettura (funzionava già)
+                send(frame(ctrlAddr, READ, REG_QUICK, new byte[]{0x20}));
+                if (pollTick % 10 == 0) {
                     send(frame(ctrlAddr, READ, REG_MODE, new byte[]{0x02}));
-                    send(frame(ctrlAddr, READ, funReg(), new byte[]{0x02}));
+                    send(frame(ctrlAddr, READ, REG_GEAR_G2, new byte[]{0x02}));
+                    send(frame(ctrlAddr, READ, REG_FUN_G2, new byte[]{0x02}));
+                    send(frame(ctrlAddr, READ, REG_FUN, new byte[]{0x02}));
                 }
             }
             pollTick++;
@@ -601,11 +588,16 @@ public class ScooterService extends Service {
 
     void setMode(int m) {
         if (stage != STAGE_COMM) return;
-        int a = ctrlAddr < 0 ? ESC : ctrlAddr;
+        final int a = ctrlAddr < 0 ? ESC : ctrlAddr;
+        final int before = rawMode;
         send(frame(a, WRITE_NR, REG_MODE, new byte[]{(byte) m, 0}));
+        if (g2Seen) send(frame(a, WRITE_NR, REG_GEAR_G2, new byte[]{(byte) m, 0}));
         mode = m;
         notifyUi();
-        h.postDelayed(() -> send(frame(a, READ, REG_MODE, new byte[]{0x02})), 400);
+        h.postDelayed(() -> {
+            send(frame(a, READ, REG_MODE, new byte[]{0x02}));
+            send(frame(a, READ, REG_GEAR_G2, new byte[]{0x02}));
+        }, 500);
     }
 
     void toggleLight() {
@@ -814,10 +806,21 @@ public class ScooterService extends Service {
                 speed = sp > 1000 ? sp / 1000.0 : sp / 10.0;
                 notifyUi();
             } else if (arg == REG_MODE && p.length >= 2) {
-                mode = word(p, 0);
+                rawMode = word(p, 0) & 0xFFFF;
+                mode = rawMode;
                 notifyUi();
-            } else if (arg == funReg() && p.length >= 2) {
-                funWord = word(p, 0) & 0xFFFF;
+            } else if (arg == REG_GEAR_G2 && p.length >= 2) {
+                rawGear = word(p, 0) & 0xFFFF;
+                g2Seen = true;
+                notifyUi();
+            } else if (arg == REG_FUN_G2 && p.length >= 2) {
+                raw7d = word(p, 0) & 0xFFFF;
+                fun7dSeen = true;
+                if (funReg() == REG_FUN_G2) funWord = raw7d;
+                notifyUi();
+            } else if (arg == REG_FUN && p.length >= 2) {
+                raw80 = word(p, 0) & 0xFFFF;
+                if (funReg() == REG_FUN) funWord = raw80;
                 notifyUi();
             }
         }

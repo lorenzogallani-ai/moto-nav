@@ -127,6 +127,9 @@ class Store {
         return k;
     }
 
+    boolean setupShown() { return p.getBoolean("setupShown", false); }
+    void setSetupShown() { p.edit().putBoolean("setupShown", true).apply(); }
+
     // ---------- Siri ----------
 
     /** "voce" = comando vocale HID; "laterale" = tasto laterale tenuto 2 s */

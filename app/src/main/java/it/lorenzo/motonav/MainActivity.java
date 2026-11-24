@@ -71,7 +71,11 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         store = new Store(this);
         setContentView(buildUi());
-        if (android.os.Build.VERSION.SDK_INT >= 23
+        if (!store.setupShown()) {
+            // primo avvio: si apre la configurazione guidata (permessi, OsmAnd, Home…)
+            store.setSetupShown();
+            startActivity(new Intent(this, SetupActivity.class));
+        } else if (android.os.Build.VERSION.SDK_INT >= 23
                 && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, 5);
@@ -562,9 +566,10 @@ public class MainActivity extends Activity {
 
     private void moreDialog() {
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setItems(new String[]{"Elenco app", "Impostazioni"}, (d, w) -> {
+                .setItems(new String[]{"Elenco app", "Impostazioni", "Configurazione iniziale"}, (d, w) -> {
                     if (w == 0) startActivity(new Intent(this, AppsActivity.class));
-                    else settingsDialog();
+                    else if (w == 1) settingsDialog();
+                    else startActivity(new Intent(this, SetupActivity.class));
                 })
                 .show();
     }

@@ -31,6 +31,8 @@ La navigazione vera e propria (mappe, percorso, voce) la fa **OsmAnd**: MotoNav 
 4. Le nuove versioni si installano sopra la precedente senza perdere i pulsanti.
 
 ## Primo avvio
+Al primo avvio si apre **Configurazione**: un elenco di permessi e impostazioni (posizione, OsmAnd, Home, luminosità, Non disturbare, tasto Siri, blocco schermo, risparmio batteria, Bluetooth, Casa/Ufficio). Tocchi le righe arancioni finché diventano verdi. Si riapre da ⋯ → Configurazione iniziale.
+
 1. ⚙ → **Scarica OsmAnd** e installalo. In OsmAnd scarica la mappa dell'Italia (o della Lombardia) e attiva il profilo **Moto** (Impostazioni → Profili).
 2. Tieni premuto **Casa** e **Ufficio** per inserire gli indirizzi.
 3. Premi **MOTO** la prima volta: chiederà il permesso di modificare le impostazioni (per la luminosità) e l'accesso "Non disturbare".

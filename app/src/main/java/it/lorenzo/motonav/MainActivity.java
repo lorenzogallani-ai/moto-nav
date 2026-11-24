@@ -22,6 +22,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextClock;
@@ -138,16 +140,34 @@ public class MainActivity extends Activity {
         search.setOnClickListener(v -> searchDialog());
         TextView apps = bigButton("APP", 0xFF333333, 20);
         apps.setOnClickListener(v -> startActivity(new Intent(this, AppsActivity.class)));
+        TextView music = bigButton("♪", 0xFF2E7D32, 26);
+        music.setOnClickListener(v -> startActivity(new Intent(this, RemoteActivity.class)));
         TextView gear = bigButton("⚙", 0xFF333333, 24);
         gear.setOnClickListener(v -> settingsDialog());
         bar.addView(motoBtn, cell(1.4f, 64));
         bar.addView(search, cell(1.2f, 64));
-        bar.addView(apps, cell(1f, 64));
-        bar.addView(gear, cell(0.7f, 64));
+        bar.addView(apps, cell(0.9f, 64));
+        bar.addView(music, cell(0.7f, 64));
+        bar.addView(gear, cell(0.6f, 64));
         LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, -2);
         barLp.topMargin = dp(4);
         root.addView(bar, barLp);
-        return root;
+
+        // sfondo: logo R1200R, grigio tenue nello spazio libero sopra la barra
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(Color.BLACK);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.logo_r1200r);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setAlpha(0.32f);
+        FrameLayout.LayoutParams logoLp = new FrameLayout.LayoutParams(-1, -2,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        logoLp.setMargins(dp(18), 0, dp(18), dp(96));
+        frame.addView(logo, logoLp);
+        root.setBackgroundColor(Color.TRANSPARENT);
+        frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        return frame;
     }
 
     private void renderDests() {

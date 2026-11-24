@@ -91,6 +91,10 @@ public class RemoteService extends Service {
     static volatile String status = "Spento";
     static volatile boolean connected = false;
     static volatile Runnable listener;
+    // diagnosi mostrata nella schermata ♪
+    static volatile boolean notifyOn = false;
+    static volatile String lastSend = "nessuno";
+    static volatile int keyCount = 0;
     static RemoteService instance;
 
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -348,9 +352,29 @@ public class RemoteService extends Service {
     private void send(byte v) {
         try {
             report.setValue(new byte[]{v});
-            server.notifyCharacteristicChanged(device, report, false);
+            boolean ok = server.notifyCharacteristicChanged(device, report, false);
+            if (v != 0) {
+                keyCount++;
+                lastSend = ok ? "partito (" + keyCount + ")" : "rifiutato da Android";
+                Runnable l = listener;
+                if (l != null) h.post(l);
+            }
+        } catch (Exception e) {
+            lastSend = "errore: " + e.getMessage();
+        }
+    }
+
+    /** Riga di diagnosi: abbinamento, ricezione tasti attivata dall'iPhone, ultimo tasto. */
+    static String diag() {
+        RemoteService s = instance;
+        String bonded = "?";
+        try {
+            if (s != null && s.device != null)
+                bonded = s.device.getBondState() == BluetoothDevice.BOND_BONDED ? "sì" : "NO";
         } catch (Exception ignored) {
         }
+        return "Abbinato: " + bonded + " · Ricezione tasti: " + (notifyOn ? "sì" : "NO")
+                + " · Ultimo tasto: " + lastSend;
     }
 
     static void key(android.content.Context c, int bits) {
@@ -415,6 +439,12 @@ public class RemoteService extends Service {
         public void onDescriptorWriteRequest(BluetoothDevice dev, int id, BluetoothGattDescriptor d,
                                              boolean prepared, boolean needResponse, int offset, byte[] value) {
             if (value != null) d.setValue(value);
+            if (CCCD.equals(d.getUuid()) && d.getCharacteristic() != null
+                    && HID_REPORT.equals(d.getCharacteristic().getUuid()) && value != null && value.length > 0) {
+                notifyOn = (value[0] & 0x01) != 0;
+                Runnable l = listener;
+                if (l != null) h.post(l);
+            }
             if (needResponse && server != null) server.sendResponse(dev, id, BluetoothGatt.GATT_SUCCESS, 0, null);
         }
     };

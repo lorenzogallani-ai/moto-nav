@@ -21,7 +21,7 @@ import android.widget.TextView;
 public class RemoteActivity extends Activity {
 
     private static final int ORANGE = 0xFFFF8C00;
-    private TextView statusView;
+    private TextView statusView, diagView;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable refresh = this::showStatus;
 
@@ -39,6 +39,12 @@ public class RemoteActivity extends Activity {
         statusView.setGravity(Gravity.CENTER);
         statusView.setPadding(dp(4), dp(4), dp(4), dp(6));
         root.addView(statusView, new LinearLayout.LayoutParams(-1, -2));
+        diagView = new TextView(this);
+        diagView.setTextColor(0xFF9A9A9A);
+        diagView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        diagView.setGravity(Gravity.CENTER);
+        diagView.setPadding(dp(4), 0, dp(4), dp(4));
+        root.addView(diagView, new LinearLayout.LayoutParams(-1, -2));
 
         // play / pausa: il tasto più grande, comodo coi guanti
         TextView play = button("▶ ❚❚", 0xFF2E7D32, 44);
@@ -112,6 +118,7 @@ public class RemoteActivity extends Activity {
     private void showStatus() {
         statusView.setText(RemoteService.status);
         statusView.setTextColor(RemoteService.connected ? 0xFF81C784 : 0xFFDDDDDD);
+        diagView.setText(RemoteService.diag());
     }
 
     /** Tenendo premuto il volume, continua a salire/scendere. */

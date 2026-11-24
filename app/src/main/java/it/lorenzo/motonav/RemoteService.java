@@ -141,6 +141,20 @@ public class RemoteService extends Service {
     private boolean advertising = false;
     private AmsClient ams;
 
+    private final android.content.BroadcastReceiver pairReceiver = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(android.content.Context c, Intent i) {
+            BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+            int variant = i.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, -1);
+            int key = i.getIntExtra(BluetoothDevice.EXTRA_PAIRING_KEY, -1);
+            log("RICHIESTA DI CONFERMA da " + (d != null ? name(d) : "?")
+                    + (key >= 0 ? " · codice " + String.format(java.util.Locale.ITALY, "%06d", key) : "")
+                    + " (tipo " + variant + ")");
+            android.widget.Toast.makeText(c, "Conferma l'abbinamento: tocca ACCOPPIA sull'orologio (se non vedi la finestra, scorri giù la tendina) e ABBINA sull'iPhone",
+                    android.widget.Toast.LENGTH_LONG).show();
+        }
+    };
+
     // l'abbinamento con l'iPhone si completa dopo il collegamento: allora riscopro i servizi Apple
     private final android.content.BroadcastReceiver bondReceiver = new android.content.BroadcastReceiver() {
         @Override
@@ -180,6 +194,9 @@ public class RemoteService extends Service {
             if (l != null) l.run();
         });
         registerReceiver(bondReceiver, new android.content.IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED));
+        android.content.IntentFilter pf = new android.content.IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST);
+        pf.setPriority(android.content.IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+        registerReceiver(pairReceiver, pf);
     }
 
     @Override
@@ -205,6 +222,10 @@ public class RemoteService extends Service {
         if (ams != null) ams.stop();
         try {
             unregisterReceiver(bondReceiver);
+        } catch (Exception ignored) {
+        }
+        try {
+            unregisterReceiver(pairReceiver);
         } catch (Exception ignored) {
         }
         try {

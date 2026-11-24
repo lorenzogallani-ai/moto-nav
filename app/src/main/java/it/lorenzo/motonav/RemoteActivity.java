@@ -77,10 +77,17 @@ public class RemoteActivity extends Activity {
         LinearLayout bottom = row();
         TextView reset = button("RIFAI ABBINAMENTO", 0xFF5D4037, 15);
         reset.setOnClickListener(v -> {
-            int n = RemoteService.forgetIphones(this);
-            android.widget.Toast.makeText(this, n > 0
-                    ? "Abbinamento cancellato sull'orologio. Ora sull'iPhone: Bluetooth → ⓘ accanto a MAX → Dissocia, poi tocca MAX"
-                    : "Nessun iPhone abbinato sull'orologio. Sull'iPhone: Bluetooth → ⓘ accanto a MAX → Dissocia, poi tocca MAX",
+            RemoteService.forgetIphones(this);
+            // rende l'orologio "visibile" per 2 minuti: così Android mostra la conferma
+            // di abbinamento come finestra in primo piano e non nascosta tra le notifiche
+            try {
+                Intent vis = new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+                vis.putExtra(android.bluetooth.BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120);
+                startActivity(vis);
+            } catch (Exception ignored) {
+            }
+            android.widget.Toast.makeText(this,
+                    "1) Consenti \"visibile\"  2) Sull'iPhone: Dissocia MAX e poi tocca MAX  3) Conferma SUBITO su tutti e due",
                     android.widget.Toast.LENGTH_LONG).show();
         });
         TextView off = button("SPEGNI", 0xFF333333, 18);

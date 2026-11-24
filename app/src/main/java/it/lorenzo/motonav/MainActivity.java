@@ -45,14 +45,15 @@ public class MainActivity extends Activity {
     private LinearLayout grid;
     private TextView battery;
     private TextView motoBtn;
-    private TextView vehMoto, vehScooter, dashBtn;
+    private static final int CYAN = 0xFF26C6DA;
+    private TextView dashBtn;
     private ImageView logo;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable live = new Runnable() {
         @Override
         public void run() {
             if (dashBtn != null && store.isScooter()) {
-                dashBtn.setText(ScooterService.ready ? "CRUSCOTTO · " + ScooterService.summary() : "CRUSCOTTO SEGWAY");
+                dashBtn.setText(ScooterService.ready ? ScooterService.summary() + "   ›" : "Collega il Segway   ›");
             }
             ui.postDelayed(this, 1000);
         }
@@ -99,105 +100,142 @@ public class MainActivity extends Activity {
 
     // ================= interfaccia =================
 
+    /** Colore della modalità: arancione in moto, azzurro in monopattino. */
+    private int acc() {
+        return store.isScooter() ? CYAN : ORANGE;
+    }
+
     private View buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.BLACK);
         root.setPadding(dp(6), dp(4), dp(6), dp(6));
 
-        // --- intestazione: ora grande, data e batteria ---
-        LinearLayout head = new LinearLayout(this);
-        head.setOrientation(LinearLayout.HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
+        // --- riga in alto: ora e data, icona del veicolo (tocca per cambiare), batteria ---
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(4), 0, dp(2), 0);
 
+        LinearLayout tc = new LinearLayout(this);
+        tc.setOrientation(LinearLayout.VERTICAL);
         TextClock clock = new TextClock(this);
         clock.setFormat24Hour("HH:mm");
         clock.setFormat12Hour("HH:mm");
         clock.setTextColor(Color.WHITE);
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 54);
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 38);
         clock.setTypeface(Typeface.DEFAULT_BOLD);
         clock.setIncludeFontPadding(false);
-        head.addView(clock, new LinearLayout.LayoutParams(0, -2, 1f));
-
-        LinearLayout side = new LinearLayout(this);
-        side.setOrientation(LinearLayout.VERTICAL);
-        side.setGravity(Gravity.END);
+        tc.addView(clock);
         TextClock date = new TextClock(this);
         date.setFormat24Hour("EEE d MMM");
         date.setFormat12Hour("EEE d MMM");
-        date.setTextColor(0xFFBBBBBB);
-        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        side.addView(date);
+        date.setTextColor(0xFF9A9A9A);
+        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tc.addView(date);
+        top.addView(tc, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        LinearLayout pill = new LinearLayout(this);
+        pill.setOrientation(LinearLayout.HORIZONTAL);
+        pill.setGravity(Gravity.CENTER);
+        pill.setPadding(dp(10), dp(3), dp(10), dp(3));
+        GradientDrawable pillBg = new GradientDrawable();
+        pillBg.setCornerRadius(dp(22));
+        pillBg.setStroke(dp(2), acc());
+        StateListDrawable pillStates = new StateListDrawable();
+        pillStates.addState(new int[]{android.R.attr.state_pressed}, round(0xFF333333));
+        pillStates.addState(new int[]{}, pillBg);
+        pill.setBackground(pillStates);
+        pill.setClickable(true);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(store.isScooter() ? R.drawable.ic_scooter : R.drawable.ic_moto);
+        icon.setColorFilter(acc());
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 30 : 46), dp(30)));
+        TextView swap = new TextView(this);
+        swap.setText(" ⇄");
+        swap.setTextColor(0xFF8A8A8A);
+        swap.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        pill.addView(swap);
+        pill.setOnClickListener(v -> switchVehicle(store.isScooter() ? "moto" : "monopattino"));
+        LinearLayout.LayoutParams pillLp = new LinearLayout.LayoutParams(-2, dp(42));
+        pillLp.setMargins(0, 0, dp(8), 0);
+        top.addView(pill, pillLp);
+
         battery = new TextView(this);
         battery.setTextColor(Color.WHITE);
-        battery.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        battery.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
         battery.setTypeface(Typeface.DEFAULT_BOLD);
         battery.setGravity(Gravity.END);
-        side.addView(battery);
-        head.addView(side);
-        root.addView(head);
+        battery.setMinWidth(dp(46));
+        top.addView(battery);
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(52)));
 
-        // --- interruttore veicolo: MOTO / MONOPATTINO ---
-        LinearLayout veh = new LinearLayout(this);
-        veh.setOrientation(LinearLayout.HORIZONTAL);
-        vehMoto = bigButton("MOTO", 0xFF222222, 17);
-        vehMoto.setOnClickListener(v -> switchVehicle("moto"));
-        vehScooter = bigButton("MONOPATTINO", 0xFF222222, 17);
-        vehScooter.setOnClickListener(v -> switchVehicle("monopattino"));
-        veh.addView(vehMoto, cell(1f, 40));
-        veh.addView(vehScooter, cell(1.4f, 40));
-        root.addView(veh, new LinearLayout.LayoutParams(-1, -2));
+        // --- monopattino: striscia con i dati del Segway (tocca per il cruscotto) ---
+        dashBtn = new TextView(this);
+        dashBtn.setText("Collega il Segway   ›");
+        dashBtn.setTextColor(0xFF7FE6F2);
+        dashBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        dashBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        dashBtn.setGravity(Gravity.CENTER_VERTICAL);
+        dashBtn.setPadding(dp(14), 0, dp(14), 0);
+        StateListDrawable dashBg = new StateListDrawable();
+        dashBg.addState(new int[]{android.R.attr.state_pressed}, round(0xFF155A62));
+        dashBg.addState(new int[]{}, round(0xFF0B2F33));
+        dashBtn.setBackground(dashBg);
+        dashBtn.setClickable(true);
+        dashBtn.setOnClickListener(v -> startActivity(new Intent(this, ScooterActivity.class)));
+        LinearLayout.LayoutParams dashLp = new LinearLayout.LayoutParams(-1, dp(42));
+        dashLp.topMargin = dp(6);
+        root.addView(dashBtn, dashLp);
+        dashBtn.setVisibility(store.isScooter() ? View.VISIBLE : View.GONE);
 
-        // --- pulsanti destinazione ---
+        // --- destinazioni in elenco ---
         ScrollView sv = new ScrollView(this);
+        sv.setVerticalScrollBarEnabled(false);
         grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
         sv.addView(grid);
         LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        svLp.topMargin = dp(4);
+        svLp.topMargin = dp(6);
         root.addView(sv, svLp);
 
-        // --- cruscotto Segway (solo in modalità monopattino) ---
-        dashBtn = bigButton("CRUSCOTTO SEGWAY", 0xFF00838F, 19);
-        dashBtn.setOnClickListener(v -> startActivity(new Intent(this, ScooterActivity.class)));
-        root.addView(dashBtn, cell(0f, 56));
-        ((LinearLayout.LayoutParams) dashBtn.getLayoutParams()).width = -1;
-
-        // --- barra in basso ---
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        motoBtn = bigButton("GUIDA", 0xFF333333, 20);
+        // --- barra in basso: GUIDA, CERCA, ♪, ⋯ ---
+        LinearLayout dock = new LinearLayout(this);
+        dock.setOrientation(LinearLayout.HORIZONTAL);
+        motoBtn = bigButton("GUIDA", 0xFF262626, 19);
         motoBtn.setOnClickListener(v -> toggleMoto());
-        TextView search = bigButton("CERCA", 0xFF333333, 20);
+        TextView search = bigButton("CERCA", 0xFF262626, 19);
         search.setOnClickListener(v -> searchDialog());
-        TextView apps = bigButton("APP", 0xFF333333, 20);
-        apps.setOnClickListener(v -> startActivity(new Intent(this, AppsActivity.class)));
-        TextView music = bigButton("♪", 0xFF2E7D32, 26);
+        TextView music = bigButton("♪", 0xFF262626, 24);
         music.setOnClickListener(v -> startActivity(new Intent(this, RemoteActivity.class)));
-        TextView gear = bigButton("⚙", 0xFF333333, 24);
-        gear.setOnClickListener(v -> settingsDialog());
-        bar.addView(motoBtn, cell(1.4f, 64));
-        bar.addView(search, cell(1.2f, 64));
-        bar.addView(apps, cell(0.9f, 64));
-        bar.addView(music, cell(0.7f, 64));
-        bar.addView(gear, cell(0.6f, 64));
-        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, -2);
-        barLp.topMargin = dp(4);
-        root.addView(bar, barLp);
+        TextView more = bigButton("⋯", 0xFF262626, 24);
+        more.setOnClickListener(v -> moreDialog());
+        dock.addView(motoBtn, cell(1.3f, 60));
+        dock.addView(search, cell(1.3f, 60));
+        dock.addView(music, cell(0.8f, 60));
+        dock.addView(more, cell(0.7f, 60));
+        LinearLayout.LayoutParams dockLp = new LinearLayout.LayoutParams(-1, -2);
+        dockLp.topMargin = dp(3);
+        root.addView(dock, dockLp);
 
-        // sfondo: logo R1200R, grigio tenue nello spazio libero sopra la barra
+        // --- sfondo: logo R1200R in moto, sagoma del monopattino in monopattino ---
         FrameLayout frame = new FrameLayout(this);
         frame.setBackgroundColor(Color.BLACK);
         logo = new ImageView(this);
-        logo.setImageResource(R.drawable.logo_r1200r);
         logo.setAdjustViewBounds(true);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        logo.setAlpha(0.32f);
-        FrameLayout.LayoutParams logoLp = new FrameLayout.LayoutParams(-1, -2,
-                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        logoLp.setMargins(dp(18), 0, dp(18), dp(96));
+        FrameLayout.LayoutParams logoLp;
+        if (store.isScooter()) {
+            logo.setImageResource(R.drawable.ic_scooter);
+            logo.setAlpha(0.22f);
+            logoLp = new FrameLayout.LayoutParams(-2, dp(60), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        } else {
+            logo.setImageResource(R.drawable.logo_r1200r);
+            logo.setAlpha(0.32f);
+            logoLp = new FrameLayout.LayoutParams(-1, dp(26), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        }
+        logoLp.setMargins(dp(18), 0, dp(18), dp(78));
         frame.addView(logo, logoLp);
-        root.setBackgroundColor(Color.TRANSPARENT);
         frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
         return frame;
     }
@@ -205,33 +243,74 @@ public class MainActivity extends Activity {
     private void renderDests() {
         grid.removeAllViews();
         final List<Store.Dest> list = store.loadDests();
-        int n = list.size() + (list.size() < Store.MAX_DEST ? 1 : 0);
-        LinearLayout row = null;
-        for (int i = 0; i < n; i++) {
-            if (i % 2 == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                grid.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        for (int i = 0; i < list.size(); i++) {
+            final int idx = i;
+            Store.Dest d = list.get(i);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(14), 0, dp(14), 0);
+            row.setBackground(bg(0xFF1B1B1B));
+            row.setClickable(true);
+
+            View dot = new View(this);
+            GradientDrawable dg = new GradientDrawable();
+            dg.setShape(GradientDrawable.OVAL);
+            dg.setColor(d.isEmpty() ? 0xFF444444 : acc());
+            dot.setBackground(dg);
+            row.addView(dot, new LinearLayout.LayoutParams(dp(10), dp(10)));
+
+            TextView name = new TextView(this);
+            name.setText(d.name);
+            name.setTextColor(d.isEmpty() ? 0xFF8A8A8A : Color.WHITE);
+            name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+            name.setTypeface(Typeface.DEFAULT_BOLD);
+            name.setSingleLine(true);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(0, -2, 1f);
+            nameLp.setMargins(dp(12), 0, dp(6), 0);
+            row.addView(name, nameLp);
+
+            if (d.isEmpty()) {
+                TextView hint = new TextView(this);
+                hint.setText("imposta");
+                hint.setTextColor(0xFF888888);
+                hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                hint.setPadding(0, 0, dp(8), 0);
+                row.addView(hint);
             }
-            TextView btn;
-            if (i < list.size()) {
-                final int idx = i;
-                Store.Dest d = list.get(i);
-                btn = bigButton(d.name, COLORS[i % COLORS.length], 26);
-                if (d.isEmpty()) btn.setAlpha(0.55f);
-                btn.setOnClickListener(v -> go(idx));
-                btn.setOnLongClickListener(v -> {
-                    editDialog(idx);
-                    return true;
-                });
-            } else {
-                btn = bigButton("+", 0xFF222222, 34);
-                btn.setOnClickListener(v -> editDialog(-1));
-            }
-            row.addView(btn, cell(1f, 92));
+            TextView chev = new TextView(this);
+            chev.setText("›");
+            chev.setTextColor(0xFF555555);
+            chev.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
+            row.addView(chev);
+
+            row.setOnClickListener(v -> go(idx));
+            row.setOnLongClickListener(v -> {
+                editDialog(idx);
+                return true;
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(60));
+            lp.bottomMargin = dp(6);
+            grid.addView(row, lp);
         }
-        // riga dispari: riempi lo spazio vuoto
-        if (n % 2 == 1 && row != null) row.addView(new View(this), cell(1f, 92));
+        if (list.size() < Store.MAX_DEST) {
+            TextView add = new TextView(this);
+            add.setText("+ Aggiungi destinazione");
+            add.setTextColor(0xFF8A8A8A);
+            add.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            add.setGravity(Gravity.CENTER);
+            GradientDrawable ag = new GradientDrawable();
+            ag.setCornerRadius(dp(14));
+            ag.setStroke(dp(2), 0xFF3A3A3A, dp(8), dp(6));
+            StateListDrawable as = new StateListDrawable();
+            as.addState(new int[]{android.R.attr.state_pressed}, round(0xFF262626));
+            as.addState(new int[]{}, ag);
+            add.setBackground(as);
+            add.setClickable(true);
+            add.setOnClickListener(v -> editDialog(-1));
+            grid.addView(add, new LinearLayout.LayoutParams(-1, dp(42)));
+        }
     }
 
     private void showBattery(Intent i) {
@@ -449,7 +528,7 @@ public class MainActivity extends Activity {
     private void updateMoto() {
         boolean on = store.motoOn();
         motoBtn.setText(on ? "GUIDA ON" : "GUIDA");
-        motoBtn.setBackground(bg(on ? ORANGE : 0xFF333333));
+        motoBtn.setBackground(bg(on ? acc() : 0xFF262626));
         motoBtn.setTextColor(on ? Color.BLACK : Color.WHITE);
         if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -460,25 +539,28 @@ public class MainActivity extends Activity {
     private void switchVehicle(String v) {
         if (v.equals(store.vehicle())) return;
         store.setVehicle(v);
-        updateVehicle();
         if (store.isScooter()) {
-            toast("Monopattino: percorsi da bici e cruscotto Segway");
+            toast("Monopattino: percorsi da bici e dati del Segway");
         } else {
             toast("Moto: percorsi da moto");
             if (ScooterService.instance != null) {
                 startService(new Intent(this, ScooterService.class).setAction(ScooterService.ACTION_STOP));
             }
         }
+        recreate(); // ridisegna tutto con l'icona e il colore della nuova modalità
     }
 
     private void updateVehicle() {
-        boolean sc = store.isScooter();
-        vehMoto.setBackground(bg(sc ? 0xFF222222 : ORANGE));
-        vehMoto.setTextColor(sc ? 0xFF888888 : Color.BLACK);
-        vehScooter.setBackground(bg(sc ? 0xFF26C6DA : 0xFF222222));
-        vehScooter.setTextColor(sc ? Color.BLACK : 0xFF888888);
-        dashBtn.setVisibility(sc ? View.VISIBLE : View.GONE);
-        logo.setVisibility(sc ? View.GONE : View.VISIBLE);
+        if (dashBtn != null) dashBtn.setVisibility(store.isScooter() ? View.VISIBLE : View.GONE);
+    }
+
+    private void moreDialog() {
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setItems(new String[]{"Elenco app", "Impostazioni"}, (d, w) -> {
+                    if (w == 0) startActivity(new Intent(this, AppsActivity.class));
+                    else settingsDialog();
+                })
+                .show();
     }
 
     // ================= impostazioni =================
@@ -629,7 +711,7 @@ public class MainActivity extends Activity {
 
     private StateListDrawable bg(int color) {
         StateListDrawable s = new StateListDrawable();
-        s.addState(new int[]{android.R.attr.state_pressed}, round(ORANGE));
+        s.addState(new int[]{android.R.attr.state_pressed}, round(acc()));
         s.addState(new int[]{}, round(color));
         return s;
     }

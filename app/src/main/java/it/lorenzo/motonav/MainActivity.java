@@ -206,7 +206,7 @@ public class MainActivity extends Activity {
         navSub = (TextView) tNav.getTag();
         tNav.setOnClickListener(v -> showDest());
         tiles.addView(tNav, tileLp());
-        LinearLayout tMus = tile(0, "♪", "MUSICA");
+        LinearLayout tMus = tile(R.drawable.ic_note, null, "MUSICA");
         musSub = (TextView) tMus.getTag();
         tMus.setOnClickListener(v -> startActivity(new Intent(this, RemoteActivity.class)));
         tiles.addView(tMus, tileLp());
@@ -264,41 +264,44 @@ public class MainActivity extends Activity {
         return frame;
     }
 
-    /** Tessera della Home: icona (disegno o testo), nome e una riga di stato sotto (salvata nel tag). */
-    private LinearLayout tile(int drawable, String glyph, String name) {
+    /** Tessera della Home: icona in un cerchio colorato, nome e una riga di stato sotto (salvata nel tag). */
+    private LinearLayout tile(int drawable, String unused, String name) {
         LinearLayout t = new LinearLayout(this);
         t.setOrientation(LinearLayout.VERTICAL);
         t.setGravity(Gravity.CENTER);
-        t.setPadding(dp(4), dp(4), dp(4), dp(4));
-        t.setBackground(bg(0xFF1B1B1B));
+        t.setPadding(dp(6), dp(6), dp(6), dp(6));
+        t.setBackground(bg(0xFF1A1A1A));
         t.setClickable(true);
-        if (drawable != 0) {
-            ImageView iv = new ImageView(this);
-            iv.setImageResource(drawable);
-            iv.setColorFilter(acc());
-            t.addView(iv, new LinearLayout.LayoutParams(dp(46), dp(46)));
-        } else {
-            TextView g = new TextView(this);
-            g.setText(glyph);
-            g.setTextColor(acc());
-            g.setTextSize(TypedValue.COMPLEX_UNIT_SP, 40);
-            g.setIncludeFontPadding(false);
-            g.setGravity(Gravity.CENTER);
-            t.addView(g, new LinearLayout.LayoutParams(-2, dp(46)));
-        }
+
+        // cerchio con il colore della modalità, molto tenue, e icona piena al centro
+        FrameLayout circle = new FrameLayout(this);
+        GradientDrawable cg = new GradientDrawable();
+        cg.setShape(GradientDrawable.OVAL);
+        cg.setColor((acc() & 0x00FFFFFF) | 0x33000000);
+        circle.setBackground(cg);
+        ImageView iv = new ImageView(this);
+        iv.setImageResource(drawable);
+        iv.setColorFilter(acc());
+        circle.addView(iv, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER));
+        t.addView(circle, new LinearLayout.LayoutParams(dp(72), dp(72)));
+
         TextView n = new TextView(this);
         n.setText(name);
         n.setTextColor(Color.WHITE);
-        n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         n.setTypeface(Typeface.DEFAULT_BOLD);
-        n.setPadding(0, dp(4), 0, dp(2));
-        t.addView(n);
+        n.setGravity(Gravity.CENTER);
+        n.setSingleLine(true);
+        n.setPadding(0, dp(8), 0, dp(2));
+        t.addView(n, new LinearLayout.LayoutParams(-1, -2));
+
         TextView sub = new TextView(this);
         sub.setTextColor(0xFF9A9A9A);
-        sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         sub.setGravity(Gravity.CENTER);
         sub.setMaxLines(2);
-        t.addView(sub);
+        sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        t.addView(sub, new LinearLayout.LayoutParams(-1, -2));
         t.setTag(sub);
         return t;
     }

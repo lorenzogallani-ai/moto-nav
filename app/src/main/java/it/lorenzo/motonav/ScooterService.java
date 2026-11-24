@@ -49,6 +49,9 @@ public class ScooterService extends Service {
     private static final int APP = 0x3E, ESC = 0x20, BLE = 0x21;
     private static final int READ = 0x01, WRITE_NR = 0x03, READ_ACK = 0x04;
     private static final int REG_QUICK = 0xB0, REG_MODE = 0x75, REG_FUN = 0x80;
+    // registri "classici" della scheda di controllo, validi su Max G2 e G30
+    private static final int REG_BATT = 0x22, REG_RANGE = 0x25, REG_SPEED = 0x26;
+    private static final int REG_FUN_G2 = 0x7D;   // luci sul Max G2
 
     private static final UUID NUS = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
     private static final UUID NUS_TX = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
@@ -101,6 +104,20 @@ public class ScooterService extends Service {
     private boolean stopping = false;
     private int bleAddr = BLE;          // modulo Bluetooth del monopattino: 0x21 (G30) o 0x04 (modelli nuovi)
     private int connectFails = 0;
+    private int ctrlAddr = -1;          // scheda di controllo che risponde ai dati (0x20 sul G30, da scoprire sul G2)
+    private int probeRound = 0;
+    private boolean forcePair = false;  // dopo un AUTH fallito rifà l'abbinamento completo
+    private int chunk = 20;             // byte per pacchetto Bluetooth (cresce se il monopattino accetta un MTU più grande)
+    private BluetoothGattCharacteristic rxChar;
+    private boolean notifyStarted = false;
+
+    private boolean isG2() {
+        return bleAddr == 0x04;
+    }
+
+    private int funReg() {
+        return isG2() ? REG_FUN_G2 : REG_FUN;
+    }
     private long lastNotif = 0;
 
     private final Runnable preR = this::sendPre;
@@ -218,6 +235,8 @@ public class ScooterService extends Service {
             ScanRecord rec = r.getScanRecord();
             if (rec != null) {
                 name = rec.getDeviceName();
+                if (rec.getManufacturerSpecificData(0x4E42) != null || rec.getManufacturerSpecificData(0x4E43) != null
+                        || rec.getManufacturerSpecificData(0x424E) != null) nus = true;
                 List<ParcelUuid> ids = rec.getServiceUuids();
                 if (ids != null) for (ParcelUuid u : ids) if (NUS.equals(u.getUuid()) || NB.equals(u.getUuid())) nus = true;
             }
@@ -226,7 +245,8 @@ public class ScooterService extends Service {
             if (name == null && !nus) return;
             if (name == null) name = r.getDevice().getName() != null ? r.getDevice().getName() : "";
             String n = name.toUpperCase();
-            boolean looks = n.startsWith("NB") || n.contains("MAX") || n.contains("NINEBOT") || n.contains("G30") || n.contains("SEGWAY");
+            boolean looks = n.startsWith("NB") || (n.contains("MAX") && !n.equals("MAX")) || n.contains("NINEBOT")
+                    || n.contains("G30") || n.contains("G2") || n.contains("SEGWAY");
             if (!looks && !nus) return;
             final String fname = name;
             final BluetoothDevice dev = r.getDevice();
@@ -301,6 +321,9 @@ public class ScooterService extends Service {
         writing = false;
         inbuf.reset();
         tx = null;
+        chunk = 20;
+        ctrlAddr = -1;
+        notifyStarted = false;
         if (gatt != null) {
             try {
                 gatt.disconnect();
@@ -352,12 +375,12 @@ public class ScooterService extends Service {
         public void onServicesDiscovered(final BluetoothGatt g, int st) {
             h.post(() -> {
                 if (g != gatt) return;
-                BluetoothGattService s = g.getService(NUS);
-                UUID rxId = NUS_RX, txId = NUS_TX;
-                if (s == null) {
-                    s = g.getService(NB);
-                    rxId = NB_RX;
-                    txId = NB_TX;
+                BluetoothGattService s = g.getService(NB);
+                UUID rxId = NB_RX, txId = NB_TX;
+                if (s == null || s.getCharacteristic(NB_RX) == null) {
+                    s = g.getService(NUS);
+                    rxId = NUS_RX;
+                    txId = NUS_TX;
                 }
                 if (s == null) {
                     fail("Questo dispositivo non sembra un monopattino Ninebot");
@@ -372,14 +395,27 @@ public class ScooterService extends Service {
                     closeGatt();
                     return;
                 }
-                g.setCharacteristicNotification(rx, true);
-                BluetoothGattDescriptor d = rx.getDescriptor(CCCD);
-                if (d != null) {
-                    d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                    g.writeDescriptor(d);
-                } else {
-                    startHandshake();
+                rxChar = rx;
+                notifyStarted = false;
+                phase += " · MTU";
+                boolean asked = false;
+                try {
+                    asked = g.requestMtu(185);
+                } catch (Exception ignored) {
                 }
+                if (!asked) enableNotify();
+                else h.postDelayed(() -> {
+                    if (g == gatt && !notifyStarted) enableNotify();
+                }, 1500);
+            });
+        }
+
+        @Override
+        public void onMtuChanged(BluetoothGatt g, int mtu, int st) {
+            h.post(() -> {
+                if (g != gatt) return;
+                if (st == BluetoothGatt.GATT_SUCCESS && mtu > 23) chunk = Math.min(mtu - 3, 180);
+                if (!notifyStarted) enableNotify();
             });
         }
 
@@ -406,6 +442,20 @@ public class ScooterService extends Service {
             });
         }
     };
+
+    private void enableNotify() {
+        if (gatt == null || rxChar == null || notifyStarted) return;
+        notifyStarted = true;
+        phase = "notifiche (pacchetti da " + chunk + " B)";
+        gatt.setCharacteristicNotification(rxChar, true);
+        BluetoothGattDescriptor d = rxChar.getDescriptor(CCCD);
+        if (d != null) {
+            d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+            if (!gatt.writeDescriptor(d)) startHandshake();
+        } else {
+            startHandshake();
+        }
+    }
 
     // ================= abbinamento cifrato =================
 
@@ -435,7 +485,7 @@ public class ScooterService extends Service {
             return;
         }
         crypto = new NbCrypto(devName != null ? devName : "");
-        bleAddr = (tries % 2 == 1) ? BLE : 0x04;
+        bleAddr = (tries % 2 == 1) ? 0x04 : BLE;
         phase = "abbinamento 1/3 (5B a 0x" + Integer.toHexString(bleAddr) + ")";
         send(frame(bleAddr, 0x5B, 0x00, new byte[0]));
         h.postDelayed(preR, 1500);
@@ -479,6 +529,7 @@ public class ScooterService extends Service {
     private void startPolling() {
         h.removeCallbacks(poll);
         pollTick = 0;
+        probeRound = 0;
         h.post(poll);
     }
 
@@ -491,11 +542,27 @@ public class ScooterService extends Service {
                 closeGatt();
                 return;
             }
-            if (out.size() < 6) {
-                send(frame(ESC, READ, REG_QUICK, new byte[]{0x20}));
-                if (pollTick % 6 == 0) {
-                    send(frame(ESC, READ, REG_MODE, new byte[]{0x02}));
-                    send(frame(ESC, READ, REG_FUN, new byte[]{0x02}));
+            if (ctrlAddr < 0) {
+                // chiedo la batteria a tutte le schede possibili: chi risponde è quella giusta
+                int[] cand = {ESC, 0x01, 0x02};
+                if (pollTick % 2 == 0) {
+                    for (int a : cand) send(frame(a, READ, REG_BATT, new byte[]{0x02}));
+                    probeRound++;
+                    phase = "cerco la scheda dati (" + probeRound + ")";
+                    if (probeRound > 8) {
+                        ctrlAddr = ESC;
+                        phase = "dati da 0x20 (predefinito)";
+                    }
+                }
+            } else if (out.size() < 8) {
+                send(frame(ctrlAddr, READ, REG_SPEED, new byte[]{0x02}));
+                if (pollTick % 4 == 0) {
+                    send(frame(ctrlAddr, READ, REG_BATT, new byte[]{0x02}));
+                    send(frame(ctrlAddr, READ, REG_RANGE, new byte[]{0x02}));
+                }
+                if (pollTick % 12 == 0) {
+                    send(frame(ctrlAddr, READ, REG_MODE, new byte[]{0x02}));
+                    send(frame(ctrlAddr, READ, funReg(), new byte[]{0x02}));
                 }
             }
             pollTick++;
@@ -505,20 +572,23 @@ public class ScooterService extends Service {
 
     void setMode(int m) {
         if (stage != STAGE_COMM) return;
-        send(frame(ESC, WRITE_NR, REG_MODE, new byte[]{(byte) m, 0}));
+        int a = ctrlAddr < 0 ? ESC : ctrlAddr;
+        send(frame(a, WRITE_NR, REG_MODE, new byte[]{(byte) m, 0}));
         mode = m;
         notifyUi();
-        h.postDelayed(() -> send(frame(ESC, READ, REG_MODE, new byte[]{0x02})), 400);
+        h.postDelayed(() -> send(frame(a, READ, REG_MODE, new byte[]{0x02})), 400);
     }
 
     void toggleLight() {
         if (stage != STAGE_COMM) return;
         int cur = funWord < 0 ? 0 : funWord;
         int next = cur ^ 0x0001;
-        send(frame(ESC, WRITE_NR, REG_FUN, new byte[]{(byte) (next & 0xFF), (byte) ((next >> 8) & 0xFF)}));
+        int a = ctrlAddr < 0 ? ESC : ctrlAddr;
+        int reg = funReg();
+        send(frame(a, WRITE_NR, reg, new byte[]{(byte) (next & 0xFF), (byte) ((next >> 8) & 0xFF)}));
         funWord = next;
         notifyUi();
-        h.postDelayed(() -> send(frame(ESC, READ, REG_FUN, new byte[]{0x02})), 400);
+        h.postDelayed(() -> send(frame(a, READ, reg, new byte[]{0x02})), 400);
     }
 
     // ================= pacchetti =================
@@ -551,8 +621,8 @@ public class ScooterService extends Service {
         if (gatt == null || tx == null) return;
         byte[] wire = plain ? withChecksum(f) : crypto.encrypt(f);
         txFrames++;
-        for (int i = 0; i < wire.length; i += 20) {
-            int n = Math.min(20, wire.length - i);
+        for (int i = 0; i < wire.length; i += chunk) {
+            int n = Math.min(chunk, wire.length - i);
             byte[] c = new byte[n];
             System.arraycopy(wire, i, c, 0, n);
             out.add(c);
@@ -646,12 +716,22 @@ public class ScooterService extends Service {
             bleAddr = src;
             serial = new byte[14];
             System.arraycopy(p, 16, serial, 0, 14);
-            stage = STAGE_PAIR;
-            stageStart = SystemClock.elapsedRealtime();
-            needButton = false;
-            setStatus("Abbino il monopattino…");
             h.removeCallbacks(preR);
-            sendPair();
+            needButton = false;
+            boolean known = gatt != null && gatt.getDevice().getAddress().equals(store.scooterMac());
+            if (arg != 0 && known && !forcePair) {
+                // password già registrata sul monopattino: vado diretto all'autenticazione
+                crypto.useAppKey(store.scooterKey());
+                stage = STAGE_AUTH;
+                tries = 0;
+                setStatus("Riconosciuto, mi autentico…");
+                sendAuth();
+            } else {
+                stage = STAGE_PAIR;
+                stageStart = SystemClock.elapsedRealtime();
+                setStatus("Abbino il monopattino…");
+                sendPair();
+            }
         } else if (fromBle && cmd == 0x5C && stage == STAGE_PAIR) {
             if (arg == 0x01) {
                 stage = STAGE_AUTH;
@@ -665,15 +745,21 @@ public class ScooterService extends Service {
             if (arg == 0x01) {
                 stage = STAGE_COMM;
                 ready = true;
-                phase = "dati";
+                forcePair = false;
+                phase = "cerco la scheda dati";
                 if (gatt != null) store.setScooter(gatt.getDevice().getAddress(), devName);
-                setStatus("Collegato a " + devName);
+                setStatus("Collegato a " + devName + (isG2() ? " (Max G2)" : ""));
                 startPolling();
             } else {
-                setStatus("Abbinamento rifiutato, ricomincio…");
+                forcePair = true;
+                setStatus("Autenticazione rifiutata, rifaccio l'abbinamento…");
                 h.postDelayed(this::startHandshake, 1000);
             }
-        } else if (src == ESC && cmd == READ_ACK) {
+        } else if (!fromBle && cmd == READ_ACK) {
+            if (ctrlAddr < 0 && arg == REG_BATT) {
+                ctrlAddr = src;
+                phase = "dati da 0x" + Integer.toHexString(src);
+            }
             if (plain && !ready) {
                 ready = true;
                 if (gatt != null) store.setScooter(gatt.getDevice().getAddress(), devName);
@@ -687,10 +773,21 @@ public class ScooterService extends Service {
                 tripKm = (word(p, 9) & 0xFFFF) / 100.0;
                 rangeKm = (word(p, 15) & 0xFFFF) / 100.0;
                 notifyUi();
+            } else if (arg == REG_BATT && p.length >= 2) {
+                int b = word(p, 0);
+                if (b >= 0 && b <= 100) battery = b;
+                notifyUi();
+            } else if (arg == REG_RANGE && p.length >= 2) {
+                rangeKm = (word(p, 0) & 0xFFFF) / 100.0;
+                notifyUi();
+            } else if (arg == REG_SPEED && p.length >= 2) {
+                int sp = Math.abs(word(p, 0));
+                speed = sp > 1000 ? sp / 1000.0 : sp / 10.0;
+                notifyUi();
             } else if (arg == REG_MODE && p.length >= 2) {
                 mode = word(p, 0);
                 notifyUi();
-            } else if (arg == REG_FUN && p.length >= 2) {
+            } else if (arg == funReg() && p.length >= 2) {
                 funWord = word(p, 0) & 0xFFFF;
                 notifyUi();
             }

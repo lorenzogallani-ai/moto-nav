@@ -103,6 +103,12 @@ class NbCrypto {
         return null;
     }
 
+    /** Password già registrata sul monopattino: chiave di sessione = SHA1(password, numero casuale BLE). */
+    synchronized void useAppKey(byte[] app) {
+        System.arraycopy(app, 0, randomApp, 0, Math.min(16, app.length));
+        sha1Key(randomApp, randomBle);
+    }
+
     // ---------------- interni ----------------
 
     private byte[] cryptoFirst(byte[] data) {

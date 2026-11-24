@@ -8,7 +8,7 @@ Schermata Home su misura per lo smartwatch Ticwris Max 4G (Android 7.1), pensata
 - **Pulsantoni destinazione** (fino a 8): un tocco avvia subito la navigazione.
   - Tieni premuto un pulsante per cambiarne nome/indirizzo o eliminarlo; **+** ne aggiunge uno.
   - L'indirizzo viene convertito in coordinate appena lo salvi, così poi la navigazione parte anche senza internet.
-- **CRUSCOTTO SEGWAY** (Ninebot Max G30): velocità grande, batteria, autonomia, modalità ECO / D / S e fari, letti direttamente dal monopattino via Bluetooth. Resta collegato in sottofondo (notifica con velocità · batteria · autonomia).
+- **CRUSCOTTO SEGWAY** (Ninebot Max G2, compatibile anche G30): velocità grande, batteria, autonomia, modalità ECO / D / S e fari, letti direttamente dal monopattino via Bluetooth. Resta collegato in sottofondo (notifica con velocità · batteria · autonomia).
   - Prima volta: accendi il monopattino, **chiudi l'app Segway sull'iPhone** (il monopattino accetta un solo collegamento alla volta), apri CRUSCOTTO e consenti la posizione (serve ad Android 7 per cercare il Bluetooth). Quando lo chiede, premi una volta il pulsante di accensione del monopattino per abbinarlo. Dopo si ricollega da solo.
   - ⚙ → "Dimentica il monopattino abbinato" per abbinarne un altro.
   - Il collegamento cifrato usa NinebotCrypto (scooterhacking, AGPL-3.0).

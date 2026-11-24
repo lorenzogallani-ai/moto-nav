@@ -45,6 +45,18 @@ public class MainActivity extends Activity {
     private LinearLayout grid;
     private TextView battery;
     private TextView motoBtn;
+    private TextView vehMoto, vehScooter, dashBtn;
+    private ImageView logo;
+    private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable live = new Runnable() {
+        @Override
+        public void run() {
+            if (dashBtn != null && store.isScooter()) {
+                dashBtn.setText(ScooterService.ready ? "CRUSCOTTO · " + ScooterService.summary() : "CRUSCOTTO SEGWAY");
+            }
+            ui.postDelayed(this, 1000);
+        }
+    };
 
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
@@ -66,11 +78,14 @@ public class MainActivity extends Activity {
         showBattery(registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
         renderDests();
         updateMoto();
+        updateVehicle();
+        ui.post(live);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        ui.removeCallbacks(live);
         try {
             unregisterReceiver(batteryReceiver);
         } catch (Exception ignored) {
@@ -122,6 +137,17 @@ public class MainActivity extends Activity {
         head.addView(side);
         root.addView(head);
 
+        // --- interruttore veicolo: MOTO / MONOPATTINO ---
+        LinearLayout veh = new LinearLayout(this);
+        veh.setOrientation(LinearLayout.HORIZONTAL);
+        vehMoto = bigButton("MOTO", 0xFF222222, 17);
+        vehMoto.setOnClickListener(v -> switchVehicle("moto"));
+        vehScooter = bigButton("MONOPATTINO", 0xFF222222, 17);
+        vehScooter.setOnClickListener(v -> switchVehicle("monopattino"));
+        veh.addView(vehMoto, cell(1f, 40));
+        veh.addView(vehScooter, cell(1.4f, 40));
+        root.addView(veh, new LinearLayout.LayoutParams(-1, -2));
+
         // --- pulsanti destinazione ---
         ScrollView sv = new ScrollView(this);
         grid = new LinearLayout(this);
@@ -131,10 +157,16 @@ public class MainActivity extends Activity {
         svLp.topMargin = dp(4);
         root.addView(sv, svLp);
 
+        // --- cruscotto Segway (solo in modalità monopattino) ---
+        dashBtn = bigButton("CRUSCOTTO SEGWAY", 0xFF00838F, 19);
+        dashBtn.setOnClickListener(v -> startActivity(new Intent(this, ScooterActivity.class)));
+        root.addView(dashBtn, cell(0f, 56));
+        ((LinearLayout.LayoutParams) dashBtn.getLayoutParams()).width = -1;
+
         // --- barra in basso ---
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        motoBtn = bigButton("MOTO", 0xFF333333, 20);
+        motoBtn = bigButton("GUIDA", 0xFF333333, 20);
         motoBtn.setOnClickListener(v -> toggleMoto());
         TextView search = bigButton("CERCA", 0xFF333333, 20);
         search.setOnClickListener(v -> searchDialog());
@@ -156,7 +188,7 @@ public class MainActivity extends Activity {
         // sfondo: logo R1200R, grigio tenue nello spazio libero sopra la barra
         FrameLayout frame = new FrameLayout(this);
         frame.setBackgroundColor(Color.BLACK);
-        ImageView logo = new ImageView(this);
+        logo = new ImageView(this);
         logo.setImageResource(R.drawable.logo_r1200r);
         logo.setAdjustViewBounds(true);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -368,7 +400,7 @@ public class MainActivity extends Activity {
 
         if (!store.motoOn()) {
             if (!Settings.System.canWrite(this)) {
-                toast("Consenti a MotoNav di modificare le impostazioni di sistema, poi torna indietro e premi MOTO");
+                toast("Consenti a MotoNav di modificare le impostazioni di sistema, poi torna indietro e premi GUIDA");
                 startActivity(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                         Uri.parse("package:" + getPackageName())));
                 return;
@@ -388,11 +420,11 @@ public class MainActivity extends Activity {
             }
             store.setMotoOn(true);
             updateMoto();
-            toast("Modalità moto: luminosità al massimo, schermo acceso 30 minuti");
+            toast("Modalità guida: luminosità al massimo, schermo acceso 30 minuti");
 
             if (nm != null && !nm.isNotificationPolicyAccessGranted() && !store.askedDnd()) {
                 store.setAskedDnd();
-                toast("Per silenziare le notifiche in moto, consenti l'accesso \"Non disturbare\" a MotoNav");
+                toast("Per silenziare le notifiche in guida, consenti l'accesso \"Non disturbare\" a MotoNav");
                 try {
                     startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
                 } catch (Exception ignored) {
@@ -410,17 +442,43 @@ public class MainActivity extends Activity {
             }
             store.setMotoOn(false);
             updateMoto();
-            toast("Modalità moto spenta");
+            toast("Modalità guida spenta");
         }
     }
 
     private void updateMoto() {
         boolean on = store.motoOn();
-        motoBtn.setText(on ? "MOTO ON" : "MOTO");
+        motoBtn.setText(on ? "GUIDA ON" : "GUIDA");
         motoBtn.setBackground(bg(on ? ORANGE : 0xFF333333));
         motoBtn.setTextColor(on ? Color.BLACK : Color.WHITE);
         if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    // ================= moto / monopattino =================
+
+    private void switchVehicle(String v) {
+        if (v.equals(store.vehicle())) return;
+        store.setVehicle(v);
+        updateVehicle();
+        if (store.isScooter()) {
+            toast("Monopattino: percorsi da bici e cruscotto Segway");
+        } else {
+            toast("Moto: percorsi da moto");
+            if (ScooterService.instance != null) {
+                startService(new Intent(this, ScooterService.class).setAction(ScooterService.ACTION_STOP));
+            }
+        }
+    }
+
+    private void updateVehicle() {
+        boolean sc = store.isScooter();
+        vehMoto.setBackground(bg(sc ? 0xFF222222 : ORANGE));
+        vehMoto.setTextColor(sc ? 0xFF888888 : Color.BLACK);
+        vehScooter.setBackground(bg(sc ? 0xFF26C6DA : 0xFF222222));
+        vehScooter.setTextColor(sc ? Color.BLACK : 0xFF888888);
+        dashBtn.setVisibility(sc ? View.VISIBLE : View.GONE);
+        logo.setVisibility(sc ? View.GONE : View.VISIBLE);
     }
 
     // ================= impostazioni =================
@@ -436,10 +494,11 @@ public class MainActivity extends Activity {
         String profLabel = "motorcycle".equals(store.profile()) ? "Moto" : "Auto";
         String[] items = {
                 "Navigatore: " + navLabel,
-                "Profilo percorso OsmAnd: " + profLabel,
+                "Percorso in moto (OsmAnd): " + profLabel,
                 "Scarica OsmAnd",
                 "Usa MotoNav come schermata Home",
                 "Impostazioni Android",
+                "Dimentica il monopattino abbinato",
                 "Versione " + versionName() + " · installati: " + Nav.installedLabel(this)
         };
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -454,6 +513,13 @@ public class MainActivity extends Activity {
                         case 2: openUrl("https://f-droid.org/packages/net.osmand.plus/"); break;
                         case 3: openSettings(Settings.ACTION_HOME_SETTINGS); break;
                         case 4: openSettings(Settings.ACTION_SETTINGS); break;
+                        case 5:
+                            store.forgetScooter();
+                            if (ScooterService.instance != null) {
+                                startService(new Intent(this, ScooterService.class).setAction(ScooterService.ACTION_STOP));
+                            }
+                            toast("Monopattino dimenticato: al prossimo collegamento lo cercherà di nuovo");
+                            break;
                         default: break;
                     }
                 })

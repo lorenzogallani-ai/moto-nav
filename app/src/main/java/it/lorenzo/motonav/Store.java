@@ -93,7 +93,41 @@ class Store {
     String profile() { return p.getString("profile", "motorcycle"); }
     void setProfile(String v) { p.edit().putString("profile", v).apply(); }
 
-    // ---------- modalità moto ----------
+    // ---------- veicolo: "moto" oppure "monopattino" ----------
+
+    String vehicle() { return p.getString("vehicle", "moto"); }
+    void setVehicle(String v) { p.edit().putString("vehicle", v).apply(); }
+    boolean isScooter() { return "monopattino".equals(vehicle()); }
+
+    /** Profilo OsmAnd per la navigazione: in monopattino si usa quello da bici (ciclabili). */
+    String navProfile() { return isScooter() ? "bicycle" : profile(); }
+
+    // ---------- monopattino Segway ----------
+
+    String scooterMac() { return p.getString("scooterMac", null); }
+    String scooterName() { return p.getString("scooterName", null); }
+    void setScooter(String mac, String name) {
+        p.edit().putString("scooterMac", mac).putString("scooterName", name).apply();
+    }
+    void forgetScooter() { p.edit().remove("scooterMac").remove("scooterName").apply(); }
+
+    /** Chiave fissa a 16 byte con cui l'orologio si abbina al monopattino (creata una volta sola). */
+    byte[] scooterKey() {
+        String hex = p.getString("scooterKey", null);
+        if (hex == null || hex.length() != 32) {
+            byte[] k = new byte[16];
+            new java.security.SecureRandom().nextBytes(k);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : k) sb.append(String.format("%02x", b));
+            hex = sb.toString();
+            p.edit().putString("scooterKey", hex).apply();
+        }
+        byte[] k = new byte[16];
+        for (int i = 0; i < 16; i++) k[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
+        return k;
+    }
+
+    // ---------- modalità guida (luminosità, schermo, notifiche) ----------
 
     boolean motoOn() { return p.getBoolean("motoOn", false); }
     void setMotoOn(boolean v) { p.edit().putBoolean("motoOn", v).apply(); }

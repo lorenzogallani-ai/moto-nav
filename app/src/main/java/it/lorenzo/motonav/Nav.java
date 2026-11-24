@@ -55,13 +55,13 @@ class Nav {
                     .appendQueryParameter("dest_lat", String.valueOf(lat))
                     .appendQueryParameter("dest_lon", String.valueOf(lon))
                     .appendQueryParameter("dest_name", name)
-                    .appendQueryParameter("profile", s.profile())
+                    .appendQueryParameter("profile", s.navProfile())
                     .appendQueryParameter("force", "true")
                     .build();
             i = new Intent(Intent.ACTION_VIEW, u);
             i.setPackage(pkg);
         } else if (pkg.equals(GMAPS)) {
-            i = new Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + lat + "," + lon + "&mode=d"));
+            i = new Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + lat + "," + lon + "&mode=" + (s.isScooter() ? "b" : "d")));
             i.setPackage(pkg);
         } else {
             i = geoIntent(lat, lon, name);

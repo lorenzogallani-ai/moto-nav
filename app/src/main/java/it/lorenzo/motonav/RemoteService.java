@@ -111,7 +111,7 @@ public class RemoteService extends Service {
     static volatile String lastSend = "nessuno";
     static volatile int keyCount = 0;
     private static final java.util.LinkedList<String> events = new java.util.LinkedList<>();
-    private static int mapReads = 0;
+    private static int mapReads = 0, anyReads = 0;
 
     /** Diario del collegamento: le ultime 8 cose successe, con l'orario. */
     static synchronized void log(String e) {
@@ -244,6 +244,12 @@ public class RemoteService extends Service {
         if (server == null) {
             setStatus("Questo orologio non riesce ad aprire il servizio Bluetooth");
             return false;
+        }
+        try {
+            StringBuilder b = new StringBuilder();
+            for (BluetoothDevice d : ad.getBondedDevices()) b.append(name(d)).append(", ");
+            log("abbinati sull'orologio: " + (b.length() == 0 ? "nessuno" : b.substring(0, b.length() - 2)));
+        } catch (Exception ignored) {
         }
         pending.clear();
         pending.add(hidService());
@@ -419,6 +425,25 @@ public class RemoteService extends Service {
         h.postDelayed(() -> send(0), 80);
     }
 
+    /** Cancella l'abbinamento salvato sull'orologio con gli iPhone (metodo nascosto di Android). */
+    static int forgetIphones(android.content.Context c) {
+        int n = 0;
+        try {
+            BluetoothAdapter ad = BluetoothAdapter.getDefaultAdapter();
+            for (BluetoothDevice d : ad.getBondedDevices()) {
+                String nm = d.getName() != null ? d.getName().toLowerCase() : "";
+                if (nm.contains("iphone") || nm.contains("ipad")) {
+                    d.getClass().getMethod("removeBond").invoke(d);
+                    n++;
+                    log("abbinamento cancellato: " + d.getName());
+                }
+            }
+        } catch (Exception e) {
+            log("non riesco a cancellare l'abbinamento: " + e.getMessage());
+        }
+        return n;
+    }
+
     /** Tiene premuto un tasto per un certo tempo (es. tasto laterale per Siri). */
     void hold(int bits, long ms) {
         if (!connected || device == null || server == null || report == null) {
@@ -550,7 +575,9 @@ public class RemoteService extends Service {
         @Override
         public void onCharacteristicReadRequest(BluetoothDevice dev, int id, int offset, BluetoothGattCharacteristic c) {
             if (BATTERY_LEVEL.equals(c.getUuid())) c.setValue(new byte[]{(byte) batteryPct()});
+            anyReads++;
             if (HID_REPORT_MAP.equals(c.getUuid()) && offset == 0) log("l'iPhone legge la struttura (" + (++mapReads) + ")");
+            else if (anyReads <= 3) log("l'iPhone legge " + c.getUuid().toString().substring(4, 8));
             respond(dev, id, offset, c.getValue());
         }
 

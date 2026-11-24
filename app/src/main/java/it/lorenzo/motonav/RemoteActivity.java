@@ -75,6 +75,14 @@ public class RemoteActivity extends Activity {
         root.addView(tracks, cell(-1, 0, 0.7f));
 
         LinearLayout bottom = row();
+        TextView reset = button("RIFAI ABBINAMENTO", 0xFF5D4037, 15);
+        reset.setOnClickListener(v -> {
+            int n = RemoteService.forgetIphones(this);
+            android.widget.Toast.makeText(this, n > 0
+                    ? "Abbinamento cancellato sull'orologio. Ora sull'iPhone: Bluetooth → ⓘ accanto a MAX → Dissocia, poi tocca MAX"
+                    : "Nessun iPhone abbinato sull'orologio. Sull'iPhone: Bluetooth → ⓘ accanto a MAX → Dissocia, poi tocca MAX",
+                    android.widget.Toast.LENGTH_LONG).show();
+        });
         TextView off = button("SPEGNI", 0xFF333333, 18);
         off.setOnClickListener(v -> {
             startService(new Intent(this, RemoteService.class).setAction(RemoteService.ACTION_STOP));
@@ -82,7 +90,8 @@ public class RemoteActivity extends Activity {
         });
         TextView home = button("◀ HOME", 0xFF333333, 18);
         home.setOnClickListener(v -> finish());
-        bottom.addView(off, cell(0, -1, 1f));
+        bottom.addView(reset, cell(0, -1, 1.3f));
+        bottom.addView(off, cell(0, -1, 0.8f));
         bottom.addView(home, cell(0, -1, 1f));
         root.addView(bottom, cell(-1, dp(56), 0f));
 

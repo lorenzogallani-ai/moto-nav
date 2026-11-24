@@ -127,6 +127,16 @@ class Store {
         return k;
     }
 
+    // ---------- Siri ----------
+
+    /** "voce" = comando vocale HID; "laterale" = tasto laterale tenuto 2 s */
+    String siriMethod() { return p.getString("siriMethod", "voce"); }
+    void setSiriMethod(String v) { p.edit().putString("siriMethod", v).apply(); }
+
+    /** Codice del tasto fisico dell'orologio usato per Siri (-1 = nessuno). */
+    int siriKey() { return p.getInt("siriKey", -1); }
+    void setSiriKey(int k) { p.edit().putInt("siriKey", k).apply(); }
+
     // ---------- modalità guida (luminosità, schermo, notifiche) ----------
 
     boolean motoOn() { return p.getBoolean("motoOn", false); }

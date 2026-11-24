@@ -49,6 +49,8 @@ public class RemoteService extends Service {
     static final int PREV = 0x04;
     static final int VOL_UP = 0x08;
     static final int VOL_DOWN = 0x10;
+    static final int VOICE = 0x40;   // "Voice Command": Siri
+    static final int POWER = 0x80;   // tasto laterale: tenuto 2 secondi apre Siri
 
     private static final byte[] REPORT_MAP = {
             0x05, 0x0C,             // Usage Page (Consumer)
@@ -65,8 +67,8 @@ public class RemoteService extends Service {
             0x09, (byte) 0xE9,      //   Volume Increment
             0x09, (byte) 0xEA,      //   Volume Decrement
             0x09, (byte) 0xE2,      //   Mute
-            0x09, (byte) 0xB0,      //   Play
-            0x09, (byte) 0xB1,      //   Pause
+            0x09, (byte) 0xCF,      //   Voice Command (Siri)
+            0x09, 0x30,             //   Power (tasto laterale)
             (byte) 0x81, 0x02,      //   Input (Data, Variable, Absolute)
             (byte) 0xC0             // End Collection
     };
@@ -319,6 +321,28 @@ public class RemoteService extends Service {
         }
         send((byte) bits);
         h.postDelayed(() -> send((byte) 0), 60);
+    }
+
+    /** Tiene premuto un tasto per un certo tempo (es. tasto laterale per Siri). */
+    void hold(int bits, long ms) {
+        if (!connected || device == null || server == null || report == null) {
+            press(bits); // mostra il messaggio "iPhone non collegato"
+            return;
+        }
+        send((byte) bits);
+        h.postDelayed(() -> send((byte) 0), ms);
+    }
+
+    /** Attiva Siri con il metodo scelto nelle impostazioni. */
+    static void siri(android.content.Context c) {
+        boolean side = "laterale".equals(new Store(c).siriMethod());
+        if (instance != null) {
+            if (side) instance.hold(POWER, 2000);
+            else instance.press(VOICE);
+        } else {
+            c.startService(new Intent(c, RemoteService.class));
+            android.widget.Toast.makeText(c, "Collego l'iPhone… riprova tra qualche secondo", android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void send(byte v) {

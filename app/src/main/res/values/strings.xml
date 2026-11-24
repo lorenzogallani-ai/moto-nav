@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="key_service_name">MotoNav Tasti</string>
+    <string name="key_service_desc">Permette a MotoNav di usare un tasto fisico dell\'orologio per attivare Siri sull\'iPhone (pressione lunga). La pressione breve mantiene la funzione normale del tasto.</string>
+</resources>

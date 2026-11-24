@@ -59,8 +59,11 @@ public class RemoteActivity extends Activity {
         TextView next = button("⏭", 0xFF37474F, 28);
         prev.setOnClickListener(v -> RemoteService.key(this, RemoteService.PREV));
         next.setOnClickListener(v -> RemoteService.key(this, RemoteService.NEXT));
-        tracks.addView(prev, cell(0, -1, 1f));
-        tracks.addView(next, cell(0, -1, 1f));
+        TextView siri = button("SIRI", 0xFF6A1B9A, 24);
+        siri.setOnClickListener(v -> RemoteService.siri(this));
+        tracks.addView(prev, cell(0, -1, 0.8f));
+        tracks.addView(siri, cell(0, -1, 1.2f));
+        tracks.addView(next, cell(0, -1, 0.8f));
         root.addView(tracks, cell(-1, 0, 0.7f));
 
         LinearLayout bottom = row();

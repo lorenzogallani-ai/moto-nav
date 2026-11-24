@@ -499,6 +499,10 @@ public class MainActivity extends Activity {
                 "Usa MotoNav come schermata Home",
                 "Impostazioni Android",
                 "Dimentica il monopattino abbinato",
+                "Tasto fisico per Siri: " + (store.siriKey() < 0 ? "non impostato"
+                        : android.view.KeyEvent.keyCodeToString(store.siriKey()).replace("KEYCODE_", "")),
+                "Come attivare Siri: " + ("laterale".equals(store.siriMethod())
+                        ? "tasto laterale tenuto" : "comando vocale"),
                 "Versione " + versionName() + " · installati: " + Nav.installedLabel(this)
         };
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -520,11 +524,51 @@ public class MainActivity extends Activity {
                             }
                             toast("Monopattino dimenticato: al prossimo collegamento lo cercherà di nuovo");
                             break;
+                        case 6: learnSiriKey(); break;
+                        case 7:
+                            store.setSiriMethod("laterale".equals(store.siriMethod()) ? "voce" : "laterale");
+                            toast("laterale".equals(store.siriMethod())
+                                    ? "Siri come tenere premuto il tasto laterale dell'iPhone (serve \"Premi tasto laterale per Siri\" attivo sull'iPhone)"
+                                    : "Siri con il comando vocale Bluetooth");
+                            settingsDialog();
+                            break;
                         default: break;
                     }
                 })
                 .setNegativeButton("Chiudi", null)
                 .show();
+    }
+
+    /** Fa scegliere il tasto fisico: serve il servizio di accessibilità "MotoNav Tasti". */
+    private void learnSiriKey() {
+        if (KeyService.instance == null) {
+            new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Attiva \"MotoNav Tasti\"")
+                    .setMessage("Per usare un tasto fisico anche dentro OsmAnd, attiva \"MotoNav Tasti\" in Accessibilità. "
+                            + "Poi torna qui e scegli di nuovo \"Tasto fisico per Siri\".")
+                    .setPositiveButton("Apri Accessibilità", (d, w) -> openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    .setNegativeButton("Annulla", null)
+                    .show();
+            return;
+        }
+        KeyService.learning = true;
+        final AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Tasto per Siri")
+                .setMessage("Premi ora il tasto fisico dell'orologio che vuoi usare (non quello di accensione).\n\n"
+                        + "Poi: pressione lunga = Siri, pressione breve = funzione normale del tasto.")
+                .setNegativeButton("Annulla", (d, w) -> KeyService.learning = false)
+                .setPositiveButton("Nessun tasto", (d, w) -> {
+                    KeyService.learning = false;
+                    store.setSiriKey(-1);
+                })
+                .show();
+        final Runnable[] wait = new Runnable[1];
+        wait[0] = () -> {
+            if (!dlg.isShowing()) return;
+            if (!KeyService.learning) dlg.dismiss();
+            else ui.postDelayed(wait[0], 300);
+        };
+        ui.postDelayed(wait[0], 300);
     }
 
     private void chooseNavApp() {

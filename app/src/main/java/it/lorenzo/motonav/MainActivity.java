@@ -46,14 +46,20 @@ public class MainActivity extends Activity {
     private TextView battery;
     private TextView motoBtn;
     private static final int CYAN = 0xFF26C6DA;
-    private TextView dashBtn;
+    private TextView dashBtn;          // sottotitolo della tessera CRUSCOTTO (dati Segway in diretta)
+    private TextView navSub, musSub;
+    private View homePage, destPage;
     private ImageView logo;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable live = new Runnable() {
         @Override
         public void run() {
             if (dashBtn != null && store.isScooter()) {
-                dashBtn.setText(ScooterService.ready ? ScooterService.summary() + "   ›" : "Collega il Segway   ›");
+                dashBtn.setText(ScooterService.ready ? ScooterService.summary() : "Collega il Segway");
+            }
+            if (musSub != null) {
+                String np = RemoteService.nowPlaying();
+                musSub.setText(RemoteService.connected ? (np.isEmpty() ? "iPhone collegato" : np) : "Tocca per collegare");
             }
             ui.postDelayed(this, 1000);
         }
@@ -104,7 +110,18 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // siamo la schermata Home: "indietro" non fa nulla
+        // dalla pagina destinazioni si torna alle funzioni; nella Home "indietro" non fa nulla
+        if (destPage != null && destPage.getVisibility() == View.VISIBLE) showHome();
+    }
+
+    private void showDest() {
+        homePage.setVisibility(View.GONE);
+        destPage.setVisibility(View.VISIBLE);
+    }
+
+    private void showHome() {
+        destPage.setVisibility(View.GONE);
+        homePage.setVisibility(View.VISIBLE);
     }
 
     // ================= interfaccia =================
@@ -115,15 +132,20 @@ public class MainActivity extends Activity {
     }
 
     private View buildUi() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(6), dp(4), dp(6), dp(6));
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(Color.BLACK);
 
-        // --- riga in alto: icona del veicolo (tocca per cambiare) e batteria ---
+        // ================= pagina 1: funzioni =================
+        LinearLayout home = new LinearLayout(this);
+        home.setOrientation(LinearLayout.VERTICAL);
+        home.setPadding(dp(6), dp(4), dp(6), dp(6));
+        homePage = home;
+
+        // --- riga in alto: icona veicolo (tocca per cambiare), logo, batteria ---
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(dp(4), 0, dp(2), 0);
+        top.setPadding(dp(2), 0, dp(4), 0);
 
         LinearLayout pill = new LinearLayout(this);
         pill.setOrientation(LinearLayout.HORIZONTAL);
@@ -141,15 +163,24 @@ public class MainActivity extends Activity {
         icon.setImageResource(store.isScooter() ? R.drawable.ic_scooter : R.drawable.ic_moto);
         icon.setColorFilter(acc());
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 34 : 54), dp(34)));
+        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 32 : 50), dp(32)));
         TextView swap = new TextView(this);
         swap.setText(" ⇄");
         swap.setTextColor(0xFF8A8A8A);
         swap.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         pill.addView(swap);
         pill.setOnClickListener(v -> switchVehicle(store.isScooter() ? "moto" : "monopattino"));
-        top.addView(pill, new LinearLayout.LayoutParams(-2, dp(44)));
-        top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        top.addView(pill, new LinearLayout.LayoutParams(-2, dp(42)));
+
+        // logo del mezzo: R1200R in moto, MAX G2 in monopattino
+        logo = new ImageView(this);
+        logo.setImageResource(store.isScooter() ? R.drawable.logo_maxg2 : R.drawable.logo_r1200r);
+        logo.setAlpha(store.isScooter() ? 0.9f : 0.45f);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(ImageView.ScaleType.FIT_START);
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(0, dp(22), 1f);
+        logoLp.setMargins(dp(12), 0, dp(10), 0);
+        top.addView(logo, logoLp);
 
         battery = new TextView(this);
         battery.setTextColor(Color.WHITE);
@@ -158,28 +189,67 @@ public class MainActivity extends Activity {
         battery.setGravity(Gravity.END);
         battery.setMinWidth(dp(46));
         top.addView(battery);
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(48)));
+        home.addView(top, new LinearLayout.LayoutParams(-1, dp(48)));
 
-        // --- monopattino: striscia con i dati del Segway (tocca per il cruscotto) ---
-        dashBtn = new TextView(this);
-        dashBtn.setText("Collega il Segway   ›");
-        dashBtn.setTextColor(0xFF7FE6F2);
-        dashBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        dashBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        dashBtn.setGravity(Gravity.CENTER_VERTICAL);
-        dashBtn.setPadding(dp(14), 0, dp(14), 0);
-        StateListDrawable dashBg = new StateListDrawable();
-        dashBg.addState(new int[]{android.R.attr.state_pressed}, round(0xFF155A62));
-        dashBg.addState(new int[]{}, round(0xFF0B2F33));
-        dashBtn.setBackground(dashBg);
-        dashBtn.setClickable(true);
-        dashBtn.setOnClickListener(v -> startActivity(new Intent(this, ScooterActivity.class)));
-        LinearLayout.LayoutParams dashLp = new LinearLayout.LayoutParams(-1, dp(42));
-        dashLp.topMargin = dp(6);
-        root.addView(dashBtn, dashLp);
-        dashBtn.setVisibility(store.isScooter() ? View.VISIBLE : View.GONE);
+        // --- tessere delle funzioni ---
+        LinearLayout tiles = new LinearLayout(this);
+        tiles.setOrientation(LinearLayout.HORIZONTAL);
+        if (store.isScooter()) {
+            LinearLayout t = tile(R.drawable.ic_gauge, null, "CRUSCOTTO");
+            dashBtn = (TextView) t.getTag();
+            t.setOnClickListener(v -> startActivity(new Intent(this, ScooterActivity.class)));
+            tiles.addView(t, tileLp());
+        } else {
+            dashBtn = null;
+        }
+        LinearLayout tNav = tile(R.drawable.ic_nav, null, "NAVIGATORE");
+        navSub = (TextView) tNav.getTag();
+        tNav.setOnClickListener(v -> showDest());
+        tiles.addView(tNav, tileLp());
+        LinearLayout tMus = tile(0, "♪", "MUSICA");
+        musSub = (TextView) tMus.getTag();
+        tMus.setOnClickListener(v -> startActivity(new Intent(this, RemoteActivity.class)));
+        tiles.addView(tMus, tileLp());
+        LinearLayout.LayoutParams tilesLp = new LinearLayout.LayoutParams(-1, 0, 1f);
+        tilesLp.setMargins(0, dp(3), 0, dp(3));
+        home.addView(tiles, tilesLp);
 
-        // --- destinazioni in elenco ---
+        // --- barra in basso: GUIDA e ⋯ ---
+        LinearLayout dock = new LinearLayout(this);
+        dock.setOrientation(LinearLayout.HORIZONTAL);
+        motoBtn = bigButton("GUIDA", 0xFF262626, 19);
+        motoBtn.setOnClickListener(v -> toggleMoto());
+        TextView more = bigButton("⋯", 0xFF262626, 24);
+        more.setOnClickListener(v -> moreDialog());
+        dock.addView(motoBtn, cell(1f, 52));
+        dock.addView(more, cell(0.35f, 52));
+        home.addView(dock, new LinearLayout.LayoutParams(-1, -2));
+
+        // ================= pagina 2: "Dove andiamo?" =================
+        LinearLayout dest = new LinearLayout(this);
+        dest.setOrientation(LinearLayout.VERTICAL);
+        dest.setPadding(dp(6), dp(4), dp(6), dp(6));
+        dest.setVisibility(View.GONE);
+        destPage = dest;
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView back = bigButton("◀", 0xFF262626, 20);
+        back.setOnClickListener(v -> showHome());
+        head.addView(back, new LinearLayout.LayoutParams(dp(52), dp(42)));
+        TextView title = new TextView(this);
+        title.setText("Dove andiamo?");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setPadding(dp(12), 0, 0, 0);
+        head.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView search = bigButton("CERCA", 0xFF262626, 16);
+        search.setOnClickListener(v -> searchDialog());
+        head.addView(search, new LinearLayout.LayoutParams(dp(92), dp(42)));
+        dest.addView(head, new LinearLayout.LayoutParams(-1, -2));
+
         ScrollView sv = new ScrollView(this);
         sv.setVerticalScrollBarEnabled(false);
         grid = new LinearLayout(this);
@@ -187,52 +257,60 @@ public class MainActivity extends Activity {
         sv.addView(grid);
         LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(-1, 0, 1f);
         svLp.topMargin = dp(6);
-        root.addView(sv, svLp);
+        dest.addView(sv, svLp);
 
-        // --- barra in basso: GUIDA, CERCA, ♪, ⋯ ---
-        LinearLayout dock = new LinearLayout(this);
-        dock.setOrientation(LinearLayout.HORIZONTAL);
-        motoBtn = bigButton("GUIDA", 0xFF262626, 19);
-        motoBtn.setOnClickListener(v -> toggleMoto());
-        TextView search = bigButton("CERCA", 0xFF262626, 19);
-        search.setOnClickListener(v -> searchDialog());
-        TextView music = bigButton("♪", 0xFF262626, 24);
-        music.setOnClickListener(v -> startActivity(new Intent(this, RemoteActivity.class)));
-        TextView more = bigButton("⋯", 0xFF262626, 24);
-        more.setOnClickListener(v -> moreDialog());
-        dock.addView(motoBtn, cell(1.3f, 60));
-        dock.addView(search, cell(1.3f, 60));
-        dock.addView(music, cell(0.8f, 60));
-        dock.addView(more, cell(0.7f, 60));
-        LinearLayout.LayoutParams dockLp = new LinearLayout.LayoutParams(-1, -2);
-        dockLp.topMargin = dp(3);
-        root.addView(dock, dockLp);
-
-        // --- sfondo: logo R1200R in moto, sagoma del monopattino in monopattino ---
-        FrameLayout frame = new FrameLayout(this);
-        frame.setBackgroundColor(Color.BLACK);
-        logo = new ImageView(this);
-        logo.setAdjustViewBounds(true);
-        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        FrameLayout.LayoutParams logoLp;
-        if (store.isScooter()) {
-            logo.setImageResource(R.drawable.ic_scooter);
-            logo.setAlpha(0.22f);
-            logoLp = new FrameLayout.LayoutParams(-2, dp(60), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        } else {
-            logo.setImageResource(R.drawable.logo_r1200r);
-            logo.setAlpha(0.32f);
-            logoLp = new FrameLayout.LayoutParams(-1, dp(26), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        }
-        logoLp.setMargins(dp(18), 0, dp(18), dp(78));
-        frame.addView(logo, logoLp);
-        frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        frame.addView(home, new FrameLayout.LayoutParams(-1, -1));
+        frame.addView(dest, new FrameLayout.LayoutParams(-1, -1));
         return frame;
+    }
+
+    /** Tessera della Home: icona (disegno o testo), nome e una riga di stato sotto (salvata nel tag). */
+    private LinearLayout tile(int drawable, String glyph, String name) {
+        LinearLayout t = new LinearLayout(this);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(4), dp(4), dp(4), dp(4));
+        t.setBackground(bg(0xFF1B1B1B));
+        t.setClickable(true);
+        if (drawable != 0) {
+            ImageView iv = new ImageView(this);
+            iv.setImageResource(drawable);
+            iv.setColorFilter(acc());
+            t.addView(iv, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        } else {
+            TextView g = new TextView(this);
+            g.setText(glyph);
+            g.setTextColor(acc());
+            g.setTextSize(TypedValue.COMPLEX_UNIT_SP, 40);
+            g.setIncludeFontPadding(false);
+            g.setGravity(Gravity.CENTER);
+            t.addView(g, new LinearLayout.LayoutParams(-2, dp(46)));
+        }
+        TextView n = new TextView(this);
+        n.setText(name);
+        n.setTextColor(Color.WHITE);
+        n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        n.setTypeface(Typeface.DEFAULT_BOLD);
+        n.setPadding(0, dp(4), 0, dp(2));
+        t.addView(n);
+        TextView sub = new TextView(this);
+        sub.setTextColor(0xFF9A9A9A);
+        sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        sub.setGravity(Gravity.CENTER);
+        sub.setMaxLines(2);
+        t.addView(sub);
+        t.setTag(sub);
+        return t;
     }
 
     private void renderDests() {
         grid.removeAllViews();
         final List<Store.Dest> list = store.loadDests();
+        if (navSub != null) {
+            int n = 0;
+            for (Store.Dest d : list) if (!d.isEmpty()) n++;
+            navSub.setText(n == 1 ? "1 destinazione" : n + " destinazioni");
+        }
         for (int i = 0; i < list.size(); i++) {
             final int idx = i;
             Store.Dest d = list.get(i);
@@ -561,7 +639,7 @@ public class MainActivity extends Activity {
     }
 
     private void updateVehicle() {
-        if (dashBtn != null) dashBtn.setVisibility(store.isScooter() ? View.VISIBLE : View.GONE);
+        // la Home si ridisegna da sola al cambio veicolo (recreate)
     }
 
     private void moreDialog() {
@@ -738,6 +816,12 @@ public class MainActivity extends Activity {
         g.setColor(color);
         g.setCornerRadius(dp(14));
         return g;
+    }
+
+    private LinearLayout.LayoutParams tileLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        return lp;
     }
 
     private LinearLayout.LayoutParams cell(float weight, int heightDp) {

@@ -499,7 +499,9 @@ public class MainActivity extends Activity {
             }
             store.setMotoOn(true);
             updateMoto();
-            toast("Modalità guida: luminosità al massimo, schermo acceso 30 minuti");
+            toast(GuidaService.secureLock(this)
+                    ? "Guida attiva. Hai un PIN o una sequenza di blocco: per tornare subito alla mappa col tasto superiore impostala su \"Scorrimento\" o \"Nessuno\""
+                    : "Guida attiva: tasto superiore per spegnere e riaccendere lo schermo, la navigazione continua");
 
             if (nm != null && !nm.isNotificationPolicyAccessGranted() && !store.askedDnd()) {
                 store.setAskedDnd();
@@ -532,6 +534,10 @@ public class MainActivity extends Activity {
         motoBtn.setTextColor(on ? Color.BLACK : Color.WHITE);
         if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // in guida: niente schermata di blocco, così il tasto superiore riporta subito alla mappa
+        Intent guida = new Intent(this, GuidaService.class);
+        if (on) startService(guida);
+        else stopService(guida);
     }
 
     // ================= moto / monopattino =================

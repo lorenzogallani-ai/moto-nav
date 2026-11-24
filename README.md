@@ -12,6 +12,7 @@ Schermata Home su misura per lo smartwatch Ticwris Max 4G (Android 7.1), pensata
   - Prima volta: accendi il monopattino, **chiudi l'app Segway sull'iPhone** (il monopattino accetta un solo collegamento alla volta), apri CRUSCOTTO e consenti la posizione (serve ad Android 7 per cercare il Bluetooth). Quando lo chiede, premi una volta il pulsante di accensione del monopattino per abbinarlo. Dopo si ricollega da solo.
   - ⚙ → "Dimentica il monopattino abbinato" per abbinarne un altro.
   - Il collegamento cifrato usa NinebotCrypto (scooterhacking, AGPL-3.0).
+- **Schermo in navigazione**: con GUIDA attiva il **tasto superiore** spegne e riaccende lo schermo; OsmAnd, cruscotto e telecomando continuano a lavorare sotto, e alla riaccensione si torna subito alla mappa (senza schermata di blocco, se il blocco è "Scorrimento" o "Nessuno"). In OsmAnd: Impostazioni → profilo → Impostazioni generali → Controllo schermo → attiva "Accendi schermo" con **Tasto di accensione** e **Istruzioni di navigazione** (si accende da solo prima delle svolte).
 - **GUIDA**: luminosità al massimo, schermo acceso per 30 minuti, notifiche silenziate. Ripremi per tornare alle impostazioni di prima.
 - **CERCA**: scrivi un posto e parte la navigazione (o lo salvi come pulsante).
 - **APP**: elenco di tutte le app a caratteri grandi.

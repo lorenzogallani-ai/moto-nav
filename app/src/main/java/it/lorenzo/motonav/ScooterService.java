@@ -76,6 +76,10 @@ public class ScooterService extends Service {
     // diagnosi mostrata nel cruscotto
     static volatile int seenDevices = 0, txFrames = 0, rxFrames = 0, rxBytes = 0;
     static volatile String lastRx = "-", phase = "-";
+    static final String ACTION_PICK = "it.lorenzo.motonav.SCOOTER_PICK";
+    // dispositivi Bluetooth visti durante la ricerca, per sceglierli a mano se non riconosco il monopattino
+    static final java.util.LinkedHashMap<String, String> seen = new java.util.LinkedHashMap<>();
+    static volatile boolean needPick = false;
 
     static String diag() {
         return "Fase: " + phase + " · visti " + seenDevices + " · inviati " + txFrames
@@ -152,6 +156,15 @@ public class ScooterService extends Service {
         startForeground(8, buildNotification());
         if (ACTION_MODE.equals(action)) {
             setMode(intent.getIntExtra(EXTRA_MODE, MODE_DRIVE));
+        } else if (ACTION_PICK.equals(action)) {
+            String addr = intent.getStringExtra("addr");
+            String nm = intent.getStringExtra("name");
+            needPick = false;
+            stopScan();
+            if (addr != null && BluetoothAdapter.getDefaultAdapter() != null) {
+                ad = BluetoothAdapter.getDefaultAdapter();
+                connect(ad.getRemoteDevice(addr), nm);
+            }
         } else if (ACTION_LIGHT.equals(action)) {
             toggleLight();
         } else if (gatt == null && !scanning) {
@@ -210,6 +223,8 @@ public class ScooterService extends Service {
             fail("Non riesco a cercare dispositivi Bluetooth");
             return;
         }
+        seen.clear();
+        needPick = false;
         setStatus("Cerco il monopattino… accendilo e chiudi l'app Segway sull'iPhone");
         ScanSettings s = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
         try {
@@ -222,7 +237,12 @@ public class ScooterService extends Service {
         h.postDelayed(() -> {
             if (scanning) {
                 stopScan();
-                fail("Monopattino non trovato: accendilo, chiudi l'app Segway sull'iPhone e premi RIPROVA");
+                if (!seen.isEmpty()) {
+                    needPick = true;
+                    fail("Non riconosco il monopattino da solo: sceglilo dall'elenco");
+                } else {
+                    fail("Nessun dispositivo Bluetooth trovato: accendi il monopattino, chiudi l'app Segway sull'iPhone e premi RIPROVA");
+                }
             }
         }, 20000);
     }
@@ -244,10 +264,19 @@ public class ScooterService extends Service {
             seenDevices++;
             if (name == null && !nus) return;
             if (name == null) name = r.getDevice().getName() != null ? r.getDevice().getName() : "";
+            if (!name.isEmpty()) {
+                final String an = name, aa = r.getDevice().getAddress();
+                final int rssi = r.getRssi();
+                h.post(() -> {
+                    if (!seen.containsKey(aa)) seen.put(aa, an + "  (" + rssi + " dBm)");
+                });
+            }
             String n = name.toUpperCase();
             boolean looks = n.startsWith("NB") || (n.contains("MAX") && !n.equals("MAX")) || n.contains("NINEBOT")
                     || n.contains("G30") || n.contains("G2") || n.contains("SEGWAY");
-            if (!looks && !nus) return;
+            // i Max G2 si presentano spesso col numero di serie (es. 01GXA2324C2526)
+            boolean serialLike = n.matches("[0-9A-Z]{12,16}") && n.matches(".*[0-9].*") && n.matches(".*[A-Z].*");
+            if (!looks && !nus && !serialLike) return;
             final String fname = name;
             final BluetoothDevice dev = r.getDevice();
             h.post(() -> {

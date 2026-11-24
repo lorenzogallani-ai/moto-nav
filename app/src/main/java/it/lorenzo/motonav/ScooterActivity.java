@@ -175,7 +175,28 @@ public class ScooterActivity extends Activity {
         startService(new Intent(this, ScooterService.class).setAction(action).putExtra(ScooterService.EXTRA_MODE, mode));
     }
 
+    private android.app.AlertDialog pickDlg;
+
+    /** Se il monopattino non è stato riconosciuto, mostra l'elenco dei dispositivi visti. */
+    private void maybePick() {
+        if (!ScooterService.needPick || ScooterService.seen.isEmpty() || (pickDlg != null && pickDlg.isShowing())) return;
+        final java.util.List<String> addrs = new java.util.ArrayList<>(ScooterService.seen.keySet());
+        final String[] labels = new String[addrs.size()];
+        for (int i = 0; i < labels.length; i++) labels[i] = ScooterService.seen.get(addrs.get(i));
+        pickDlg = new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Qual è il monopattino?")
+                .setItems(labels, (d, w) -> {
+                    String label = labels[w];
+                    String name = label.contains("  (") ? label.substring(0, label.indexOf("  (")) : label;
+                    startService(new Intent(this, ScooterService.class).setAction(ScooterService.ACTION_PICK)
+                            .putExtra("addr", addrs.get(w)).putExtra("name", name));
+                })
+                .setNegativeButton("Annulla", (d, w) -> ScooterService.needPick = false)
+                .show();
+    }
+
     private void render() {
+        maybePick();
         boolean ok = ScooterService.ready;
         diagView.setText(ScooterService.diag());
         if (ok) {

@@ -71,6 +71,11 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         store = new Store(this);
         setContentView(buildUi());
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, 5);
+        }
     }
 
     @Override
@@ -110,29 +115,11 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(6), dp(4), dp(6), dp(6));
 
-        // --- riga in alto: ora e data, icona del veicolo (tocca per cambiare), batteria ---
+        // --- riga in alto: icona del veicolo (tocca per cambiare) e batteria ---
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(dp(4), 0, dp(2), 0);
-
-        LinearLayout tc = new LinearLayout(this);
-        tc.setOrientation(LinearLayout.VERTICAL);
-        TextClock clock = new TextClock(this);
-        clock.setFormat24Hour("HH:mm");
-        clock.setFormat12Hour("HH:mm");
-        clock.setTextColor(Color.WHITE);
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 38);
-        clock.setTypeface(Typeface.DEFAULT_BOLD);
-        clock.setIncludeFontPadding(false);
-        tc.addView(clock);
-        TextClock date = new TextClock(this);
-        date.setFormat24Hour("EEE d MMM");
-        date.setFormat12Hour("EEE d MMM");
-        date.setTextColor(0xFF9A9A9A);
-        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        tc.addView(date);
-        top.addView(tc, new LinearLayout.LayoutParams(0, -2, 1f));
 
         LinearLayout pill = new LinearLayout(this);
         pill.setOrientation(LinearLayout.HORIZONTAL);
@@ -150,16 +137,15 @@ public class MainActivity extends Activity {
         icon.setImageResource(store.isScooter() ? R.drawable.ic_scooter : R.drawable.ic_moto);
         icon.setColorFilter(acc());
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 30 : 46), dp(30)));
+        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 34 : 54), dp(34)));
         TextView swap = new TextView(this);
         swap.setText(" ⇄");
         swap.setTextColor(0xFF8A8A8A);
-        swap.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        swap.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         pill.addView(swap);
         pill.setOnClickListener(v -> switchVehicle(store.isScooter() ? "moto" : "monopattino"));
-        LinearLayout.LayoutParams pillLp = new LinearLayout.LayoutParams(-2, dp(42));
-        pillLp.setMargins(0, 0, dp(8), 0);
-        top.addView(pill, pillLp);
+        top.addView(pill, new LinearLayout.LayoutParams(-2, dp(44)));
+        top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
 
         battery = new TextView(this);
         battery.setTextColor(Color.WHITE);
@@ -168,7 +154,7 @@ public class MainActivity extends Activity {
         battery.setGravity(Gravity.END);
         battery.setMinWidth(dp(46));
         top.addView(battery);
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(52)));
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(48)));
 
         // --- monopattino: striscia con i dati del Segway (tocca per il cruscotto) ---
         dashBtn = new TextView(this);
@@ -340,6 +326,11 @@ public class MainActivity extends Activity {
             Nav.go(this, store, d.lat, d.lon, d.name);
             return;
         }
+        if (!online()) {
+            // senza internet: OsmAnd cerca l'indirizzo nelle mappe offline e parte col primo risultato
+            Nav.searchNavigate(this, store, d.query, false);
+            return;
+        }
         toast("Cerco " + d.query + "…");
         new Thread(() -> {
             final Geo.Result r = Geo.find(d.query);
@@ -353,8 +344,8 @@ public class MainActivity extends Activity {
                     }
                     Nav.go(this, store, r.lat, r.lon, d.name);
                 } else {
-                    // senza internet o indirizzo non trovato: lo cerca l'app di mappe
-                    Nav.search(this, store, d.query);
+                    // indirizzo non trovato online: lo cerca OsmAnd nelle mappe offline
+                    Nav.searchNavigate(this, store, d.query, false);
                 }
             });
         }).start();
@@ -379,12 +370,17 @@ public class MainActivity extends Activity {
     }
 
     private void navigateTo(final String name, final String query) {
+        if (!online()) {
+            // senza internet: OsmAnd cerca offline e mostra i risultati per scegliere
+            Nav.searchNavigate(this, store, query, true);
+            return;
+        }
         toast("Cerco " + query + "…");
         new Thread(() -> {
             final Geo.Result r = Geo.find(query);
             runOnUiThread(() -> {
                 if (r != null) Nav.go(this, store, r.lat, r.lon, name);
-                else Nav.search(this, store, query);
+                else Nav.searchNavigate(this, store, query, true);
             });
         }).start();
     }
@@ -453,6 +449,10 @@ public class MainActivity extends Activity {
 
     /** Trova subito le coordinate, così poi la navigazione parte anche senza internet. */
     private void locate(final int idx, final String query) {
+        if (!online()) {
+            toast("Salvato. Senza internet l'indirizzo lo cerca OsmAnd nelle mappe offline quando premi il pulsante");
+            return;
+        }
         new Thread(() -> {
             final Geo.Result r = Geo.find(query);
             runOnUiThread(() -> {
@@ -760,6 +760,17 @@ public class MainActivity extends Activity {
                     (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
             if (imm != null) imm.showSoftInput(e, 0);
         }, 200);
+    }
+
+    /** C'è una connessione a internet (Wi-Fi o SIM)? Sull'orologio di solito no. */
+    private boolean online() {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            android.net.NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
+            return ni != null && ni.isConnected();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void toast(String s) {

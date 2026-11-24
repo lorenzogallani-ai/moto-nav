@@ -79,6 +79,49 @@ class Nav {
         start(a, i, fallback);
     }
 
+    /**
+     * Navigazione senza coordinate e senza internet: OsmAnd cerca l'indirizzo nelle mappe offline
+     * vicino alla tua posizione. showResults=false parte subito col primo risultato.
+     */
+    static void searchNavigate(Activity a, Store s, String query, boolean showResults) {
+        String pkg = pick(a, s.navApp());
+        android.location.Location here = lastLocation(a);
+        if (pkg == null || !pkg.startsWith("net.osmand") || here == null) {
+            search(a, s, query);
+            return;
+        }
+        Uri u = Uri.parse("osmand.api://navigate_search").buildUpon()
+                .appendQueryParameter("dest_search_query", query)
+                .appendQueryParameter("search_lat", String.valueOf(here.getLatitude()))
+                .appendQueryParameter("search_lon", String.valueOf(here.getLongitude()))
+                .appendQueryParameter("show_search_results", String.valueOf(showResults))
+                .appendQueryParameter("profile", s.navProfile())
+                .appendQueryParameter("force", "true")
+                .build();
+        Intent i = new Intent(Intent.ACTION_VIEW, u);
+        i.setPackage(pkg);
+        Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(query)));
+        fallback.setPackage(pkg);
+        start(a, i, fallback);
+    }
+
+    /** Ultima posizione nota (GPS o rete), senza accendere nulla. */
+    @SuppressWarnings("MissingPermission")
+    static android.location.Location lastLocation(Context c) {
+        try {
+            android.location.LocationManager lm = (android.location.LocationManager) c.getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) return null;
+            android.location.Location best = null;
+            for (String p : lm.getProviders(true)) {
+                android.location.Location l = lm.getLastKnownLocation(p);
+                if (l != null && (best == null || l.getTime() > best.getTime())) best = l;
+            }
+            return best;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static Intent geoIntent(double lat, double lon, String name) {
         return new Intent(Intent.ACTION_VIEW,
                 Uri.parse("geo:" + lat + "," + lon + "?q=" + lat + "," + lon + "(" + Uri.encode(name) + ")"));
@@ -86,7 +129,8 @@ class Nav {
 
     private static void start(Activity a, Intent i, Intent fallback) {
         try {
-            a.startActivity(i);
+            // OsmAnd vuole le richieste "osmand.api" con startActivityForResult
+            a.startActivityForResult(i, 77);
         } catch (Exception e) {
             try {
                 a.startActivity(fallback);

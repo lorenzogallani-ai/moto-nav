@@ -4,7 +4,7 @@ Schermata Home su misura per lo smartwatch Ticwris Max 4G (Android 7.1), pensata
 
 ## Cosa fa
 - **Due modalità, MOTO e MONOPATTINO** (interruttore sotto l'orologio). In moto il percorso è da moto e compare il logo R1200R; in monopattino il percorso è da bici (ciclabili) e compare il pulsante **CRUSCOTTO SEGWAY**.
-- **Orologio grande, data e batteria** (gialla sotto il 30%, rossa sotto il 15%).
+- **Batteria** in alto a destra (gialla sotto il 30%, rossa sotto il 15%).
 - **Pulsantoni destinazione** (fino a 8): un tocco avvia subito la navigazione.
   - Tieni premuto un pulsante per cambiarne nome/indirizzo o eliminarlo; **+** ne aggiunge uno.
   - L'indirizzo viene convertito in coordinate appena lo salvi, così poi la navigazione parte anche senza internet.
@@ -19,6 +19,8 @@ Schermata Home su misura per lo smartwatch Ticwris Max 4G (Android 7.1), pensata
 - **♪ Telecomando iPhone**: play/pausa, volume (tieni premuto per salire/scendere veloce), brano precedente/successivo. L'orologio si presenta all'iPhone come un telecomando Bluetooth multimediale: nessuna app da installare sull'iPhone, i tasti comandano l'app che sta suonando (Spotify). Resta attivo in sottofondo con i comandi anche nella tendina delle notifiche, così funziona mentre navighi.
   - Prima volta: apri ♪ sull'orologio, poi sull'iPhone **Impostazioni → Bluetooth** e tocca il nome dell'orologio sotto "Altri dispositivi"; conferma l'abbinamento su entrambi. Dopo si ricollega da solo.
 - **⚙**: scelta del navigatore (OsmAnd, Organic Maps, Google Maps), profilo Moto/Auto, download di OsmAnd, impostare MotoNav come Home.
+
+**Funziona senza internet** (niente SIM né Wi-Fi in uso): OsmAnd naviga con le mappe scaricate, e gli indirizzi di pulsanti e CERCA li cerca OsmAnd nelle mappe offline vicino alla tua posizione. Telecomando iPhone, Siri e cruscotto Segway usano solo il Bluetooth. Il Wi-Fi serve solo una volta, per installare le app e scaricare le mappe.
 
 La navigazione vera e propria (mappe, percorso, voce) la fa **OsmAnd**: MotoNav gli passa la destinazione col profilo Moto.
 

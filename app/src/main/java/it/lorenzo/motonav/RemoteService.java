@@ -52,21 +52,11 @@ public class RemoteService extends Service {
     static final int VOICE = 0x40;   // "Voice Command": Siri
     static final int POWER = 0x80;   // tasto laterale: tenuto 2 secondi apre Siri
 
-    // Struttura come le tastiere Bluetooth compatibili con iPhone: tastiera (ID 1) + tasti multimediali (ID 2, 16 bit)
+    // Una sola raccolta "tasti multimediali", senza numero di rapporto: un'unica caratteristica Report.
+    // (Con più Report questo Android confonde i descrittori: l'iPhone vedeva tre rapporti "tastiera"
+    // e nessun rapporto multimediale, quindi ignorava i tasti.)
     private static final byte[] REPORT_MAP = {
-            // --- tastiera (ID 1): serve perché iOS tratti l'orologio come un vero dispositivo di comando ---
-            0x05, 0x01, 0x09, 0x06, (byte) 0xA1, 0x01, (byte) 0x85, 0x01,
-            0x05, 0x07, 0x19, (byte) 0xE0, 0x29, (byte) 0xE7, 0x15, 0x00, 0x25, 0x01,
-            0x75, 0x01, (byte) 0x95, 0x08, (byte) 0x81, 0x02,                 // modificatori
-            (byte) 0x95, 0x01, 0x75, 0x08, (byte) 0x81, 0x01,                 // riservato
-            (byte) 0x95, 0x05, 0x75, 0x01, 0x05, 0x08, 0x19, 0x01, 0x29, 0x05,
-            (byte) 0x91, 0x02,                                                // LED (output)
-            (byte) 0x95, 0x01, 0x75, 0x03, (byte) 0x91, 0x01,                 // riempimento LED
-            (byte) 0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65,
-            0x05, 0x07, 0x19, 0x00, 0x29, 0x65, (byte) 0x81, 0x00,            // 6 tasti
-            (byte) 0xC0,
-            // --- tasti multimediali (ID 2), un bit per tasto ---
-            0x05, 0x0C, 0x09, 0x01, (byte) 0xA1, 0x01, (byte) 0x85, 0x02,
+            0x05, 0x0C, 0x09, 0x01, (byte) 0xA1, 0x01,
             0x15, 0x00, 0x25, 0x01, 0x75, 0x01, (byte) 0x95, 0x10,
             0x09, (byte) 0xCD,          // bit 0  Play/Pausa
             0x09, (byte) 0xB5,          // bit 1  Brano successivo
@@ -326,21 +316,8 @@ public class RemoteService extends Service {
         proto.setValue(new byte[]{0x01}); // modalità "report"
         s.addCharacteristic(proto);
 
-        // tastiera, input (ID 1): non lo usiamo, ma iOS se lo aspetta
-        kbReport = inputReport(1, 8);
-        s.addCharacteristic(kbReport);
-        // tastiera, output (ID 1): l'iPhone ci scrive lo stato dei LED
-        BluetoothGattCharacteristic out = new BluetoothGattCharacteristic(HID_REPORT,
-                BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_WRITE
-                        | BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-                BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED | BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED);
-        out.setValue(new byte[]{0});
-        BluetoothGattDescriptor outRef = new BluetoothGattDescriptor(REPORT_REF, BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED);
-        outRef.setValue(new byte[]{0x01, 0x02});
-        out.addDescriptor(outRef);
-        s.addCharacteristic(out);
-        // tasti multimediali, input (ID 2): è quello che usiamo
-        report = inputReport(2, 2);
+        // un solo rapporto: tasti multimediali (nessun numero di rapporto → riferimento 0)
+        report = inputReport(0, 2);
         s.addCharacteristic(report);
         return s;
     }
@@ -461,7 +438,7 @@ public class RemoteService extends Service {
     /** Banco prove: manda un valore grezzo sul rapporto multimediale (o tastiera se kb). */
     boolean rawReport(boolean kb, byte[] v) {
         try {
-            BluetoothGattCharacteristic c = kb ? kbReport : report;
+            BluetoothGattCharacteristic c = kb ? null : report;
             if (!connected || device == null || server == null || c == null) {
                 log("prova: iPhone non collegato");
                 return false;

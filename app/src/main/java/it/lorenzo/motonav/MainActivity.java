@@ -222,7 +222,7 @@ public class MainActivity extends Activity {
             wxSub.setText(WeatherActivity.summary(store));
             tWx.setOnClickListener(v -> startActivity(new Intent(this, WeatherActivity.class)));
             tiles.addView(tWx, tileLp());
-            LinearLayout tCh = tile(R.drawable.ic_explore, null, "CARTA NAUTICA");
+            LinearLayout tCh = tile(R.drawable.ic_explore, null, "CARTA");
             chSub = (TextView) tCh.getTag();
             chSub.setText(portLine());
             tCh.setOnClickListener(v -> openChart());

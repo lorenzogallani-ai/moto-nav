@@ -98,9 +98,22 @@ class Store {
     String vehicle() { return p.getString("vehicle", "moto"); }
     void setVehicle(String v) { p.edit().putString("vehicle", v).apply(); }
     boolean isScooter() { return "monopattino".equals(vehicle()); }
+    boolean isWater() { return "acqua".equals(vehicle()); }
 
-    /** Profilo OsmAnd per la navigazione: in monopattino si usa quello da bici (ciclabili). */
-    String navProfile() { return isScooter() ? "bicycle" : profile(); }
+    /** Profilo OsmAnd: bici in monopattino (ciclabili), barca in moto d'acqua. */
+    String navProfile() { return isScooter() ? "bicycle" : isWater() ? "boat" : profile(); }
+
+    // ---------- moto d'acqua: porto di partenza (Domaso) e meteo salvato ----------
+    double portLat() { return Double.longBitsToDouble(p.getLong("portLat", Double.doubleToLongBits(46.1517))); }
+    double portLon() { return Double.longBitsToDouble(p.getLong("portLon", Double.doubleToLongBits(9.3297))); }
+    String portName() { return p.getString("portName", "Domaso"); }
+    void setPort(String name, double lat, double lon) {
+        p.edit().putString("portName", name).putLong("portLat", Double.doubleToLongBits(lat))
+                .putLong("portLon", Double.doubleToLongBits(lon)).apply();
+    }
+    String weatherJson() { return p.getString("wxJson", null); }
+    long weatherAt() { return p.getLong("wxAt", 0); }
+    void setWeather(String json) { p.edit().putString("wxJson", json).putLong("wxAt", System.currentTimeMillis()).apply(); }
 
     // ---------- monopattino Segway ----------
 

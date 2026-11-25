@@ -47,7 +47,8 @@ public class MainActivity extends Activity {
     private TextView motoBtn;
     private static final int CYAN = 0xFF26C6DA;
     private TextView dashBtn;          // sottotitolo della tessera CRUSCOTTO (dati Segway in diretta)
-    private TextView navSub, musSub;
+    private TextView navSub, musSub, wxSub, chSub;
+    private static final int BLUE = WeatherActivity.BLUE;
     private View homePage, destPage;
     private ImageView logo;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -57,6 +58,7 @@ public class MainActivity extends Activity {
             if (dashBtn != null && store.isScooter()) {
                 dashBtn.setText(ScooterService.ready ? ScooterService.summary() : "Collega il Segway");
             }
+            if (chSub != null) chSub.setText(portLine());
             if (musSub != null) {
                 String np = RemoteService.nowPlaying();
                 musSub.setText(RemoteService.connected ? (np.isEmpty() ? "iPhone collegato" : np) : "Tocca per collegare");
@@ -95,6 +97,14 @@ public class MainActivity extends Activity {
         showBattery(registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
         renderDests();
         Gps.assistIfStale(this, online());
+        if (store.isWater() && online() && System.currentTimeMillis() - store.weatherAt() > 3600 * 1000L) {
+            new Thread(() -> {
+                if (WeatherActivity.fetch(this, store) != null)
+                    ui.post(() -> { if (wxSub != null) wxSub.setText(WeatherActivity.summary(store)); });
+            }).start();
+        } else if (wxSub != null) {
+            wxSub.setText(WeatherActivity.summary(store));
+        }
         updateMoto();
         updateVehicle();
         ui.post(live);
@@ -130,7 +140,7 @@ public class MainActivity extends Activity {
 
     /** Colore della modalità: arancione in moto, azzurro in monopattino. */
     private int acc() {
-        return store.isScooter() ? CYAN : ORANGE;
+        return store.isScooter() ? CYAN : store.isWater() ? BLUE : ORANGE;
     }
 
     private View buildUi() {
@@ -162,22 +172,23 @@ public class MainActivity extends Activity {
         pill.setBackground(pillStates);
         pill.setClickable(true);
         ImageView icon = new ImageView(this);
-        icon.setImageResource(store.isScooter() ? R.drawable.ic_scooter : R.drawable.ic_moto);
+        icon.setImageResource(store.isScooter() ? R.drawable.ic_scooter : store.isWater() ? R.drawable.ic_jetski : R.drawable.ic_moto);
         icon.setColorFilter(acc());
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 32 : 50), dp(32)));
+        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 32 : store.isWater() ? 60 : 50), dp(store.isWater() ? 28 : 32)));
         TextView swap = new TextView(this);
         swap.setText(" ⇄");
         swap.setTextColor(0xFF8A8A8A);
         swap.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         pill.addView(swap);
-        pill.setOnClickListener(v -> switchVehicle(store.isScooter() ? "moto" : "monopattino"));
+        // moto → monopattino → moto d'acqua → moto
+        pill.setOnClickListener(v -> switchVehicle(store.isScooter() ? "acqua" : store.isWater() ? "moto" : "monopattino"));
         top.addView(pill, new LinearLayout.LayoutParams(-2, dp(42)));
 
         // logo del mezzo: R1200R in moto, MAX G2 in monopattino
         logo = new ImageView(this);
-        logo.setImageResource(store.isScooter() ? R.drawable.logo_maxg2 : R.drawable.logo_r1200r);
-        logo.setAlpha(store.isScooter() ? 0.9f : 0.45f);
+        logo.setImageResource(store.isScooter() ? R.drawable.logo_maxg2 : store.isWater() ? R.drawable.logo_spark : R.drawable.logo_r1200r);
+        logo.setAlpha(store.isScooter() ? 0.9f : store.isWater() ? 1f : 0.45f);
         logo.setAdjustViewBounds(true);
         logo.setScaleType(ImageView.ScaleType.FIT_START);
         LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(0, dp(22), 1f);
@@ -204,14 +215,36 @@ public class MainActivity extends Activity {
         } else {
             dashBtn = null;
         }
-        LinearLayout tNav = tile(R.drawable.ic_nav, null, "NAVIGATORE");
-        navSub = (TextView) tNav.getTag();
-        tNav.setOnClickListener(v -> showDest());
-        tiles.addView(tNav, tileLp());
-        LinearLayout tMus = tile(R.drawable.ic_note, null, "MUSICA");
-        musSub = (TextView) tMus.getTag();
-        tMus.setOnClickListener(v -> startActivity(new Intent(this, RemoteActivity.class)));
-        tiles.addView(tMus, tileLp());
+        if (store.isWater()) {
+            // moto d'acqua: meteo, carta nautica e rientro al porto
+            LinearLayout tWx = tile(R.drawable.ic_wind, null, "METEO");
+            wxSub = (TextView) tWx.getTag();
+            wxSub.setText(WeatherActivity.summary(store));
+            tWx.setOnClickListener(v -> startActivity(new Intent(this, WeatherActivity.class)));
+            tiles.addView(tWx, tileLp());
+            LinearLayout tCh = tile(R.drawable.ic_explore, null, "CARTA NAUTICA");
+            chSub = (TextView) tCh.getTag();
+            chSub.setText(portLine());
+            tCh.setOnClickListener(v -> openChart());
+            tiles.addView(tCh, tileLp());
+            LinearLayout tRet = tile(R.drawable.ic_home, null, "RIENTRO");
+            ((TextView) tRet.getTag()).setText("al porto di " + store.portName());
+            tRet.setOnClickListener(v -> Nav.go(this, store, store.portLat(), store.portLon(), "Porto " + store.portName()));
+            tiles.addView(tRet, tileLp());
+            navSub = null;
+            musSub = null;
+        } else {
+            wxSub = null;
+            chSub = null;
+            LinearLayout tNav = tile(R.drawable.ic_nav, null, "NAVIGATORE");
+            navSub = (TextView) tNav.getTag();
+            tNav.setOnClickListener(v -> showDest());
+            tiles.addView(tNav, tileLp());
+            LinearLayout tMus = tile(R.drawable.ic_note, null, "MUSICA");
+            musSub = (TextView) tMus.getTag();
+            tMus.setOnClickListener(v -> startActivity(new Intent(this, RemoteActivity.class)));
+            tiles.addView(tMus, tileLp());
+        }
         LinearLayout.LayoutParams tilesLp = new LinearLayout.LayoutParams(-1, 0, 1f);
         tilesLp.setMargins(0, dp(3), 0, dp(3));
         home.addView(tiles, tilesLp);
@@ -635,12 +668,44 @@ public class MainActivity extends Activity {
         if (store.isScooter()) {
             toast("Monopattino: percorsi da bici e dati del Segway");
         } else {
-            toast("Moto: percorsi da moto");
+            toast(store.isWater() ? "Moto d'acqua: meteo e carta nautica" : "Moto: percorsi da moto");
             if (ScooterService.instance != null) {
                 startService(new Intent(this, ScooterService.class).setAction(ScooterService.ACTION_STOP));
             }
         }
         recreate(); // ridisegna tutto con l'icona e il colore della nuova modalità
+    }
+
+    /** Distanza dal porto, dall'ultima posizione GPS. */
+    private String portLine() {
+        android.location.Location l = Nav.lastLocation(this);
+        if (l == null) return "Porto: " + store.portName();
+        float[] r = new float[1];
+        android.location.Location.distanceBetween(l.getLatitude(), l.getLongitude(), store.portLat(), store.portLon(), r);
+        String d = r[0] < 1000 ? Math.round(r[0]) + " m" : String.format(java.util.Locale.ITALY, "%.1f km", r[0] / 1000);
+        String sp = l.hasSpeed() && l.getSpeed() > 1 ? " · " + Math.round(l.getSpeed() * 1.944) + " kn" : "";
+        return store.portName() + " " + d + sp;
+    }
+
+    /** Apre OsmAnd sulla carta (profilo Barca e stile nautico si scelgono una volta in OsmAnd). */
+    private void openChart() {
+        String pkg = Nav.installed(this, Nav.OSMAND_PLUS) ? Nav.OSMAND_PLUS : Nav.installed(this, Nav.OSMAND) ? Nav.OSMAND : null;
+        if (pkg == null) {
+            toast("Installa OsmAnd per la carta nautica (Impostazioni → Scarica OsmAnd)");
+            return;
+        }
+        Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+        if (i != null) startActivity(i);
+    }
+
+    private void setPortHere() {
+        android.location.Location l = Nav.lastLocation(this);
+        if (l == null || System.currentTimeMillis() - l.getTime() > 10 * 60 * 1000L) {
+            toast("Serve una posizione GPS recente: aspetta qualche secondo all'aperto e riprova");
+            return;
+        }
+        store.setPort(store.portName(), l.getLatitude(), l.getLongitude());
+        toast("Porto impostato qui (±" + Math.round(l.getAccuracy()) + " m)");
     }
 
     private void updateVehicle() {
@@ -649,11 +714,13 @@ public class MainActivity extends Activity {
 
     private void moreDialog() {
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setItems(new String[]{"Elenco app", "Impostazioni", "Configurazione iniziale", "Banco prove (Claude)"}, (d, w) -> {
+                .setItems(new String[]{"Elenco app", "Impostazioni", "Configurazione iniziale", "Banco prove (Claude)",
+                        "Porto: " + store.portName() + " (tocca per usare la posizione attuale)"}, (d, w) -> {
                     if (w == 0) startActivity(new Intent(this, AppsActivity.class));
                     else if (w == 1) settingsDialog();
                     else if (w == 2) startActivity(new Intent(this, SetupActivity.class));
-                    else startActivity(new Intent(this, BridgeActivity.class));
+                    else if (w == 3) startActivity(new Intent(this, BridgeActivity.class));
+                    else setPortHere();
                 })
                 .show();
     }

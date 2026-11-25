@@ -667,7 +667,7 @@ public class Bridge extends Service {
         Intent bat = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         int lvl = bat != null ? bat.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) : -1;
         sb.append("versione ").append(version()).append(" · batteria ").append(lvl).append("% · veicolo ")
-                .append(new Store(this).isScooter() ? "monopattino" : "moto").append(" · rete ").append(netName()).append('\n');
+                .append(new Store(this).vehicle()).append(" · rete ").append(netName()).append('\n');
         sb.append("MONOPATTINO: ").append(ScooterService.state()).append('\n');
         ScooterService s = ScooterService.instance;
         if (s != null) sb.append("  ").append(s.internals()).append('\n');

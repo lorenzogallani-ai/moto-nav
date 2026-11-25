@@ -97,6 +97,10 @@
             android:foregroundServiceType="connectedDevice" />
 
         <activity
+            android:name=".WeatherActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".BridgeActivity"
             android:exported="false"
             android:launchMode="singleTop" />

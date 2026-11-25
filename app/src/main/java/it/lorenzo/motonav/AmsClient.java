@@ -52,8 +52,16 @@ class AmsClient {
         this.onChange = onChange;
     }
 
+    private boolean auto = false;
+
     void start(BluetoothDevice d) {
+        start(d, false);
+    }
+
+    /** auto=true: aspetta che il collegamento già aperto dall'iPhone sia usabile invece di aprirne uno nuovo. */
+    void start(BluetoothDevice d, boolean useAuto) {
         stop();
+        auto = useAuto;
         dev = d;
         discoverTries = 0;
         state = "collegamento…";
@@ -61,16 +69,17 @@ class AmsClient {
         // se in 10 secondi non si apre, lascio perdere: resta il telecomando classico
         final BluetoothDevice mine = d;
         h.postDelayed(() -> {
-            if (!ready && dev == mine && gatt != null && state.startsWith("collegamento")) {
+            if (!auto && !ready && dev == mine && gatt != null && state.startsWith("collegamento")) {
                 stop();
                 state = "non disponibile";
                 changed();
             }
         }, 10000);
         try {
+            Dbg.log("ams", "apro il collegamento verso " + d.getAddress() + (auto ? " (automatico)" : ""));
             gatt = Build.VERSION.SDK_INT >= 23
-                    ? d.connectGatt(ctx, false, cb, BluetoothDevice.TRANSPORT_LE)
-                    : d.connectGatt(ctx, false, cb);
+                    ? d.connectGatt(ctx, auto, cb, BluetoothDevice.TRANSPORT_LE)
+                    : d.connectGatt(ctx, auto, cb);
         } catch (Exception e) {
             state = "errore: " + e.getMessage();
             changed();
@@ -174,6 +183,7 @@ class AmsClient {
     private final BluetoothGattCallback cb = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt g, int st, int ns) {
+            Dbg.log("ams", "stato collegamento " + ns + " codice " + st);
             h.post(() -> {
                 if (g != gatt) return;
                 if (ns == BluetoothProfile.STATE_CONNECTED) {
@@ -184,6 +194,11 @@ class AmsClient {
                     ready = false;
                     state = "scollegato";
                     changed();
+                    // primo tentativo fallito: riprovo in modalità automatica (riusa il collegamento dell'iPhone)
+                    if (!auto && dev != null) {
+                        final BluetoothDevice d0 = dev;
+                        h.postDelayed(() -> start(d0, true), 1000);
+                    }
                 }
             });
         }

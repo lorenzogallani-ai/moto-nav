@@ -461,6 +461,13 @@ public class RemoteService extends Service {
         return "canale Apple: avvio su " + t.getAddress();
     }
 
+    String startAmsAuto() {
+        BluetoothDevice t = target();
+        if (t == null) return "iPhone non collegato";
+        h.post(() -> ams.start(t, true));
+        return "canale Apple (automatico): avvio su " + t.getAddress();
+    }
+
     String amsInfo() {
         if (ams == null) return "-";
         return "stato=" + ams.state + " pronto=" + ams.ready + " app=" + ams.player + " riproduzione=" + ams.playback

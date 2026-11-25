@@ -460,6 +460,7 @@ public class Bridge extends Service {
                     return "comando Apple " + w[3] + " inviato";
                 }
                 if (w.length > 2 && "info".equals(w[2])) return s.amsInfo();
+                if (w.length > 2 && "auto".equals(w[2])) return s.startAmsAuto();
                 return s.startAms();
             case "hold":
                 if (s == null) return "servizio spento";

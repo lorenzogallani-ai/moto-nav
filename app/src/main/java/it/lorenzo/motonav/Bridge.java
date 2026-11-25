@@ -462,6 +462,8 @@ public class Bridge extends Service {
                 if (w.length > 2 && "info".equals(w[2])) return s.amsInfo();
                 if (w.length > 2 && "auto".equals(w[2])) return s.startAmsAuto();
                 return s.startAms();
+            case "ids":
+                return s == null ? "servizio spento" : s.idsInfo();
             case "hold":
                 if (s == null) return "servizio spento";
                 s.holdBits(Integer.parseInt(w[2], 16), Long.parseLong(w[3]));

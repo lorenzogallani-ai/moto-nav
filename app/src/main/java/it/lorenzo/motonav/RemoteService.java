@@ -538,9 +538,12 @@ public class RemoteService extends Service {
 
     private void send(int v) {
         try {
-            report.setValue(new byte[]{(byte) (v & 0xFF), (byte) ((v >> 8) & 0xFF)});
+            BluetoothGattCharacteristic rc = liveReport();
+            byte[] val = new byte[]{(byte) (v & 0xFF), (byte) ((v >> 8) & 0xFF)};
+            report.setValue(val);
+            rc.setValue(val);
             BluetoothDevice t = target();
-            boolean ok = server.notifyCharacteristicChanged(t, report, false);
+            boolean ok = server.notifyCharacteristicChanged(t, rc, false);
             if (v != 0) Dbg.log("hid", "tasto " + Integer.toHexString(v) + " → " + (t != null ? t.getAddress() : "nessuno"));
             if (v != 0) {
                 keyCount++;
@@ -598,6 +601,7 @@ public class RemoteService extends Service {
     private final BluetoothGattServerCallback gattCallback = new BluetoothGattServerCallback() {
         @Override
         public void onServiceAdded(int st, BluetoothGattService s) {
+            Dbg.log("gatt", "servizio " + s.getUuid().toString().substring(4, 8) + " aggiunto, stato " + st + ": " + ids(s));
             h.post(RemoteService.this::addNextService);
         }
 
@@ -730,6 +734,39 @@ public class RemoteService extends Service {
         } catch (Exception ignored) {
         }
         return device;
+    }
+
+    /** Numeri interni (handle) assegnati da Android a caratteristiche e descrittori. */
+    static String ids(BluetoothGattService s) {
+        if (s == null) return "-";
+        StringBuilder b = new StringBuilder();
+        for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
+            b.append(c.getUuid().toString().substring(4, 8)).append('#').append(c.getInstanceId());
+            for (BluetoothGattDescriptor d : c.getDescriptors())
+                b.append('[').append(d.getUuid().toString().substring(4, 8)).append('#').append(d.getInstanceId()).append(']');
+            b.append(' ');
+        }
+        return b.toString();
+    }
+
+    String idsInfo() {
+        return "nostro report #" + (report != null ? report.getInstanceId() : -1) + "\nserver: "
+                + (server != null ? ids(server.getService(HID)) : "-");
+    }
+
+    /**
+     * La caratteristica "Report" come la conosce il server Bluetooth: è quella con il numero interno giusto.
+     * Su questo orologio i numeri della nostra copia possono non corrispondere, e allora i tasti partono verso
+     * un indirizzo interno sbagliato e l'iPhone li scarta.
+     */
+    private BluetoothGattCharacteristic liveReport() {
+        try {
+            BluetoothGattService s = server != null ? server.getService(HID) : null;
+            BluetoothGattCharacteristic c = s != null ? s.getCharacteristic(HID_REPORT) : null;
+            if (c != null) return c;
+        } catch (Exception ignored) {
+        }
+        return report;
     }
 
     /** Nome breve della caratteristica per il diario, es. "2a4d(media)". */

@@ -175,7 +175,7 @@ public class MainActivity extends Activity {
         icon.setImageResource(store.isScooter() ? R.drawable.ic_scooter : store.isWater() ? R.drawable.ic_jetski : R.drawable.ic_moto);
         icon.setColorFilter(acc());
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 32 : store.isWater() ? 60 : 50), dp(store.isWater() ? 28 : 32)));
+        pill.addView(icon, new LinearLayout.LayoutParams(dp(store.isScooter() ? 32 : store.isWater() ? 72 : 50), dp(store.isWater() ? 27 : 32)));
         TextView swap = new TextView(this);
         swap.setText(" ⇄");
         swap.setTextColor(0xFF8A8A8A);

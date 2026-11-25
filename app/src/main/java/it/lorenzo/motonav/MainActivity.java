@@ -94,6 +94,7 @@ public class MainActivity extends Activity {
         super.onResume();
         showBattery(registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
         renderDests();
+        Gps.assistIfStale(this, online());
         updateMoto();
         updateVehicle();
         ui.post(live);

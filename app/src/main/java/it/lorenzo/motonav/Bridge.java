@@ -138,6 +138,7 @@ public class Bridge extends Service {
                     continue;
                 }
                 int issue = issue();
+                Gps.assistIfStale(this, true);
                 if (issue <= 0) {
                     sleep(15000);
                     continue;
@@ -344,6 +345,8 @@ public class Bridge extends Service {
                     h.post(this::stopGps);
                     return "GPS spento";
                 }
+                if ("xtra".equals(b)) return Gps.assist(this);
+                if ("reset".equals(b)) return Gps.reset(this);
                 return gpsLine();
             case "nav":
                 return nav(cmd.substring(3).trim());
@@ -365,7 +368,7 @@ public class Bridge extends Service {
                 return update();
             case "help":
                 return "ping · stato · log N · sc start|stop|int|sniff on/off/all|poll on/off|raw DST CMD ARG HEX|read DST REG LEN|write DST REG HEX|mode N|light|pick MAC"
-                        + " · hid start|stop|diag|key BITS|raw HEX|kb HEX|forget|adv · gps on|off · nav testo|lat,lon · open home|scooter|remote · sh comando · prefs · set chiave valore · bt · update";
+                        + " · hid start|stop|diag|key BITS|raw HEX|kb HEX|forget|adv · gps on|off|xtra|reset · nav testo|lat,lon · open home|scooter|remote · sh comando · prefs · set chiave valore · bt · update";
             default:
                 return "comando sconosciuto (help)";
         }

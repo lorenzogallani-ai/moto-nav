@@ -29,6 +29,7 @@ public class GuidaService extends Service {
     @SuppressWarnings("deprecation")
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(9, buildNotification());
+        Gps.keepWarm(this, true);
         if (lock == null) {
             try {
                 KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
@@ -45,6 +46,7 @@ public class GuidaService extends Service {
     @Override
     @SuppressWarnings("deprecation")
     public void onDestroy() {
+        Gps.keepWarm(this, false);
         try {
             if (lock != null) lock.reenableKeyguard();
         } catch (Exception ignored) {

@@ -152,6 +152,15 @@ public class RemoteService extends Service {
             log("RICHIESTA DI CONFERMA da " + (d != null ? name(d) : "?")
                     + (key >= 0 ? " · codice " + String.format(java.util.Locale.ITALY, "%06d", key) : "")
                     + " (tipo " + variant + ")");
+            // provo a confermare io dall'orologio: su alcuni Android è permesso, su altri no (lo scrivo nel diario)
+            if (d != null && (variant == 2 || variant == 3)) {
+                try {
+                    boolean ok = d.setPairingConfirmation(true);
+                    log("conferma automatica dall'orologio: " + (ok ? "OK" : "rifiutata"));
+                } catch (Exception e) {
+                    log("conferma automatica non permessa: " + e.getClass().getSimpleName());
+                }
+            }
             android.widget.Toast.makeText(c, "Conferma l'abbinamento: tocca ACCOPPIA sull'orologio (se non vedi la finestra, scorri giù la tendina) e ABBINA sull'iPhone",
                     android.widget.Toast.LENGTH_LONG).show();
         }

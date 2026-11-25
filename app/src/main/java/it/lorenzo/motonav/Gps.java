@@ -28,6 +28,9 @@ final class Gps {
             Dbg.log("gps", r);
             return r;
         } catch (Exception e) {
+            // segno comunque l'ora, così non riprovo a ogni giro
+            c.getSharedPreferences("motonav", Context.MODE_PRIVATE).edit()
+                    .putLong("gpsAssistAt", System.currentTimeMillis()).apply();
             Dbg.log("gps", "assistenza non riuscita: " + e);
             return "errore " + e;
         }

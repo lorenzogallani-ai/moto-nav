@@ -54,7 +54,7 @@ import java.util.TimeZone;
 public class Bridge extends Service {
 
     // mini-app GitHub "moto-nav-banco-prove" (identificativo pubblico, non è una password)
-    static final String CLIENT_ID = "CLIENT_ID_DA_INSERIRE";
+    static final String CLIENT_ID = "Iv23likVi9JIdceuo9wb";
     static final String REPO = "lorenzogallani-ai/moto-nav";
     static final String OWNER = "lorenzogallani-ai";
     static final String ISSUE_TITLE = "Banco prove orologio";
@@ -190,7 +190,7 @@ public class Bridge extends Service {
     // ===================== accesso a GitHub (codice da inserire sul telefono) =====================
 
     private void deviceFlow() throws Exception {
-        if (CLIENT_ID.contains("DA_INSERIRE")) {
+        if (CLIENT_ID.isEmpty()) {
             set("Manca l'identificativo della mini-app GitHub");
             sleep(30000);
             return;

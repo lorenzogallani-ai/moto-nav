@@ -329,6 +329,7 @@ public class ScooterService extends Service {
         scooterName = devName;
         setStatus("Mi collego a " + (devName != null ? devName : "monopattino") + "…");
         closeGatt();
+        connAddr = dev.getAddress();
         if (Build.VERSION.SDK_INT >= 23) {
             gatt = dev.connectGatt(this, false, gattCb, BluetoothDevice.TRANSPORT_LE);
         } else {
@@ -639,6 +640,8 @@ public class ScooterService extends Service {
     }
 
     // ---- banco prove ----
+    /** Indirizzo del monopattino a cui mi sto collegando: il telecomando lo deve ignorare. */
+    static volatile String connAddr = null;
     static volatile boolean sniff = false, sniffAll = false, pollOn = true;
 
     /** Manda un pacchetto a mano: destinatario, comando, argomento, dati. */

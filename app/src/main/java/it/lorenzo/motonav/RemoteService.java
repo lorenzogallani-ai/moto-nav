@@ -471,6 +471,15 @@ public class RemoteService extends Service {
         h.post(this::restartAdvertising);
     }
 
+    private boolean isScooter(BluetoothDevice d) {
+        if (d == null) return false;
+        String a = d.getAddress();
+        if (a.equalsIgnoreCase(ScooterService.connAddr) || a.equalsIgnoreCase(new Store(this).scooterMac())) return true;
+        String n = d.getName();
+        return n != null && !n.toLowerCase().contains("iphone") && !n.toLowerCase().contains("ipad")
+                && n.matches("[0-9A-Z]{12,16}");
+    }
+
     /** Cancella l'abbinamento salvato sull'orologio con gli iPhone (metodo nascosto di Android). */
     static int forgetIphones(android.content.Context c) {
         int n = 0;
@@ -577,6 +586,9 @@ public class RemoteService extends Service {
 
         @Override
         public void onConnectionStateChange(final BluetoothDevice dev, int st, int newState) {
+            // Android avvisa il telecomando anche dei collegamenti in uscita (il monopattino):
+            // non sono l'iPhone, quindi non li tocco (prima venivano abbinati e ricevevano i tasti)
+            if (isScooter(dev)) return;
             h.post(() -> {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     device = dev;

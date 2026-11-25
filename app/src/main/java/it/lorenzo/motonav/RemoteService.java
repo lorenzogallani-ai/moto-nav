@@ -510,7 +510,9 @@ public class RemoteService extends Service {
     private void send(int v) {
         try {
             report.setValue(new byte[]{(byte) (v & 0xFF), (byte) ((v >> 8) & 0xFF)});
-            boolean ok = server.notifyCharacteristicChanged(device, report, false);
+            BluetoothDevice t = target();
+            boolean ok = server.notifyCharacteristicChanged(t, report, false);
+            if (v != 0) Dbg.log("hid", "tasto " + Integer.toHexString(v) + " → " + (t != null ? t.getAddress() : "nessuno"));
             if (v != 0) {
                 keyCount++;
                 lastSend = ok ? "partito (" + keyCount + ")" : "rifiutato da Android";
@@ -597,7 +599,7 @@ public class RemoteService extends Service {
                         }
                     }, 2500);
                     setStatus("Collegato a " + name(dev));
-                    log("collegato " + name(dev) + " · abbinato: " + bondText(dev));
+                    log("collegato " + name(dev) + " · abbinato: " + bondText(dev) + " · " + dev.getAddress());
                     try {
                         // tiene aperta la connessione anche quando lo schermo si spegne
                         if (server != null) server.connect(dev, false);
@@ -620,7 +622,8 @@ public class RemoteService extends Service {
         public void onCharacteristicReadRequest(BluetoothDevice dev, int id, int offset, BluetoothGattCharacteristic c) {
             if (BATTERY_LEVEL.equals(c.getUuid())) c.setValue(new byte[]{(byte) batteryPct()});
             anyReads++;
-            Dbg.log("gatt", "lettura " + shortId(c) + " offset " + offset);
+            Dbg.log("gatt", "lettura " + shortId(c) + " offset " + offset + " da " + dev.getAddress());
+            follow(dev);
             if (HID_REPORT_MAP.equals(c.getUuid()) && offset == 0) log("l'iPhone legge la struttura (" + (++mapReads) + ")");
             else if (anyReads <= 3) log("l'iPhone legge " + c.getUuid().toString().substring(4, 8));
             respond(dev, id, offset, c.getValue());
@@ -655,7 +658,8 @@ public class RemoteService extends Service {
         @Override
         public void onDescriptorWriteRequest(BluetoothDevice dev, int id, BluetoothGattDescriptor d,
                                              boolean prepared, boolean needResponse, int offset, byte[] value) {
-            Dbg.log("gatt", "scrittura descrittore " + d.getUuid().toString().substring(4, 8) + " di " + shortId(d.getCharacteristic()) + " = " + Dbg.hex(value));
+            Dbg.log("gatt", "scrittura descrittore " + d.getUuid().toString().substring(4, 8) + " di " + shortId(d.getCharacteristic()) + " = " + Dbg.hex(value) + " da " + dev.getAddress());
+            follow(dev);
             if (value != null) d.setValue(value);
             if (CCCD.equals(d.getUuid()) && d.getCharacteristic() == kbReport && value != null && value.length > 0)
                 log("ricezione tastiera " + ((value[0] & 1) != 0 ? "attivata" : "disattivata"));
@@ -668,6 +672,36 @@ public class RemoteService extends Service {
             if (needResponse && server != null) server.sendResponse(dev, id, BluetoothGatt.GATT_SUCCESS, 0, null);
         }
     };
+
+    /**
+     * Dopo l'abbinamento l'iPhone può presentarsi con un indirizzo diverso da quello del collegamento
+     * (indirizzo "privato" → indirizzo vero). I tasti vanno mandati all'indirizzo con cui parla adesso,
+     * altrimenti Android li dà per partiti ma non arrivano.
+     */
+    private void follow(BluetoothDevice dev) {
+        if (dev == null || isScooter(dev)) return;
+        if (device == null || !device.getAddress().equals(dev.getAddress())) {
+            Dbg.log("hid", "l'iPhone ora usa l'indirizzo " + dev.getAddress() + (device != null ? " (prima " + device.getAddress() + ")" : ""));
+            device = dev;
+            connected = true;
+        }
+    }
+
+    /** Destinatario dei tasti: l'iPhone effettivamente collegato in questo momento. */
+    private BluetoothDevice target() {
+        try {
+            for (BluetoothDevice d : bm.getConnectedDevices(android.bluetooth.BluetoothProfile.GATT_SERVER)) {
+                if (isScooter(d)) continue;
+                if (device == null || !device.getAddress().equals(d.getAddress())) {
+                    Dbg.log("hid", "collegati: uso " + d.getAddress() + " invece di " + (device != null ? device.getAddress() : "-"));
+                    device = d;
+                }
+                return d;
+            }
+        } catch (Exception ignored) {
+        }
+        return device;
+    }
 
     /** Nome breve della caratteristica per il diario, es. "2a4d(media)". */
     private String shortId(BluetoothGattCharacteristic c) {

@@ -643,6 +643,7 @@ public class RemoteService extends Service {
         public void onCharacteristicReadRequest(BluetoothDevice dev, int id, int offset, BluetoothGattCharacteristic c) {
             if (BATTERY_LEVEL.equals(c.getUuid())) c.setValue(new byte[]{(byte) batteryPct()});
             anyReads++;
+            Dbg.log("gatt", "lettura " + shortId(c) + " offset " + offset);
             if (HID_REPORT_MAP.equals(c.getUuid()) && offset == 0) log("l'iPhone legge la struttura (" + (++mapReads) + ")");
             else if (anyReads <= 3) log("l'iPhone legge " + c.getUuid().toString().substring(4, 8));
             respond(dev, id, offset, c.getValue());
@@ -651,6 +652,7 @@ public class RemoteService extends Service {
         @Override
         public void onCharacteristicWriteRequest(BluetoothDevice dev, int id, BluetoothGattCharacteristic c,
                                                  boolean prepared, boolean needResponse, int offset, byte[] value) {
+            Dbg.log("gatt", "scrittura " + shortId(c) + " = " + Dbg.hex(value));
             if (value != null) c.setValue(value);
             if (HID_REPORT.equals(c.getUuid())) log("l'iPhone scrive i LED: mi vede come tastiera ✓");
             if (HID_PROTOCOL.equals(c.getUuid())) log("l'iPhone imposta il protocollo");
@@ -658,14 +660,28 @@ public class RemoteService extends Service {
         }
 
         @Override
+        public void onMtuChanged(BluetoothDevice d, int mtu) {
+            Dbg.log("gatt", "MTU " + mtu);
+        }
+
+        @Override
+        public void onNotificationSent(BluetoothDevice d, int status) {
+            if (status != 0) Dbg.log("gatt", "notifica non consegnata, stato " + status);
+        }
+
+        @Override
         public void onDescriptorReadRequest(BluetoothDevice dev, int id, int offset, BluetoothGattDescriptor d) {
+            Dbg.log("gatt", "lettura descrittore " + d.getUuid().toString().substring(4, 8) + " di " + shortId(d.getCharacteristic()));
             respond(dev, id, offset, d.getValue());
         }
 
         @Override
         public void onDescriptorWriteRequest(BluetoothDevice dev, int id, BluetoothGattDescriptor d,
                                              boolean prepared, boolean needResponse, int offset, byte[] value) {
+            Dbg.log("gatt", "scrittura descrittore " + d.getUuid().toString().substring(4, 8) + " di " + shortId(d.getCharacteristic()) + " = " + Dbg.hex(value));
             if (value != null) d.setValue(value);
+            if (CCCD.equals(d.getUuid()) && d.getCharacteristic() == kbReport && value != null && value.length > 0)
+                log("ricezione tastiera " + ((value[0] & 1) != 0 ? "attivata" : "disattivata"));
             if (CCCD.equals(d.getUuid()) && d.getCharacteristic() == report && value != null && value.length > 0) {
                 notifyOn = (value[0] & 0x01) != 0;
                 log("ricezione tasti " + (notifyOn ? "ATTIVATA dall'iPhone" : "disattivata"));
@@ -675,6 +691,15 @@ public class RemoteService extends Service {
             if (needResponse && server != null) server.sendResponse(dev, id, BluetoothGatt.GATT_SUCCESS, 0, null);
         }
     };
+
+    /** Nome breve della caratteristica per il diario, es. "2a4d(media)". */
+    private String shortId(BluetoothGattCharacteristic c) {
+        if (c == null) return "?";
+        String u = c.getUuid().toString().substring(4, 8);
+        if (c == report) return u + "(media)";
+        if (c == kbReport) return u + "(tastiera)";
+        return u;
+    }
 
     private void respond(BluetoothDevice dev, int id, int offset, byte[] value) {
         if (server == null) return;

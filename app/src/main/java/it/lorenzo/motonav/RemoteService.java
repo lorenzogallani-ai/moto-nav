@@ -117,6 +117,7 @@ public class RemoteService extends Service {
     static synchronized void log(String e) {
         String t = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ITALY).format(new java.util.Date());
         events.addFirst(t + " " + e);
+        Dbg.log("hid", e);
         while (events.size() > 8) events.removeLast();
         Runnable l = listener;
         RemoteService s = instance;
@@ -135,6 +136,7 @@ public class RemoteService extends Service {
     private BluetoothGattServer server;
     private BluetoothLeAdvertiser adv;
     private BluetoothGattCharacteristic report;
+    private BluetoothGattCharacteristic kbReport;
     private BluetoothGattCharacteristic batteryLevel;
     private BluetoothDevice device;
     private final Queue<BluetoothGattService> pending = new LinkedList<>();
@@ -316,7 +318,8 @@ public class RemoteService extends Service {
         s.addCharacteristic(proto);
 
         // tastiera, input (ID 1): non lo usiamo, ma iOS se lo aspetta
-        s.addCharacteristic(inputReport(1, 8));
+        kbReport = inputReport(1, 8);
+        s.addCharacteristic(kbReport);
         // tastiera, output (ID 1): l'iPhone ci scrive lo stato dei LED
         BluetoothGattCharacteristic out = new BluetoothGattCharacteristic(HID_REPORT,
                 BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_WRITE
@@ -444,6 +447,28 @@ public class RemoteService extends Service {
         }
         send(bits);
         h.postDelayed(() -> send(0), 80);
+    }
+
+    /** Banco prove: manda un valore grezzo sul rapporto multimediale (o tastiera se kb). */
+    boolean rawReport(boolean kb, byte[] v) {
+        try {
+            BluetoothGattCharacteristic c = kb ? kbReport : report;
+            if (!connected || device == null || server == null || c == null) {
+                log("prova: iPhone non collegato");
+                return false;
+            }
+            c.setValue(v);
+            boolean ok = server.notifyCharacteristicChanged(device, c, false);
+            log("prova " + (kb ? "tastiera" : "media") + " " + Dbg.hex(v) + " → " + (ok ? "partito" : "rifiutato"));
+            return ok;
+        } catch (Exception e) {
+            log("prova errore: " + e);
+            return false;
+        }
+    }
+
+    void restartAdv() {
+        h.post(this::restartAdvertising);
     }
 
     /** Cancella l'abbinamento salvato sull'orologio con gli iPhone (metodo nascosto di Android). */

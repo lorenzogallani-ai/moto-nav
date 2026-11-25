@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         store = new Store(this);
         setContentView(buildUi());
+        if (Bridge.on(this) && Bridge.instance == null) startService(new Intent(this, Bridge.class));
         if (!store.setupShown()) {
             // primo avvio: si apre la configurazione guidata (permessi, OsmAnd, Home…)
             store.setSetupShown();
@@ -647,10 +648,11 @@ public class MainActivity extends Activity {
 
     private void moreDialog() {
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setItems(new String[]{"Elenco app", "Impostazioni", "Configurazione iniziale"}, (d, w) -> {
+                .setItems(new String[]{"Elenco app", "Impostazioni", "Configurazione iniziale", "Banco prove (Claude)"}, (d, w) -> {
                     if (w == 0) startActivity(new Intent(this, AppsActivity.class));
                     else if (w == 1) settingsDialog();
-                    else startActivity(new Intent(this, SetupActivity.class));
+                    else if (w == 2) startActivity(new Intent(this, SetupActivity.class));
+                    else startActivity(new Intent(this, BridgeActivity.class));
                 })
                 .show();
     }

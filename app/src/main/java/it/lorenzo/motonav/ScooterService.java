@@ -571,7 +571,7 @@ public class ScooterService extends Service {
             }
             if (ctrlAddr < 0) ctrlAddr = ESC;
             phase = "dati";
-            if (out.size() < 8) {
+            if (out.size() < 8 && pollOn) {
                 // blocco rapido 0xB0: velocità, batteria, autonomia in una sola lettura (funzionava già)
                 send(frame(ctrlAddr, READ, REG_QUICK, new byte[]{0x20}));
                 if (pollTick % 10 == 0) {
@@ -638,8 +638,38 @@ public class ScooterService extends Service {
         return o;
     }
 
+    // ---- banco prove ----
+    static volatile boolean sniff = false, sniffAll = false, pollOn = true;
+
+    /** Manda un pacchetto a mano: destinatario, comando, argomento, dati. */
+    void raw(int dst, int cmd, int arg, byte[] data) {
+        h.post(() -> {
+            if (gatt == null || tx == null || (!plain && crypto == null)) {
+                Dbg.log("sc", "prova: monopattino non collegato");
+                return;
+            }
+            boolean was = sniff;
+            sniff = true;
+            send(frame(dst, cmd, arg, data));
+            if (!was) h.postDelayed(() -> sniff = false, 4000);
+        });
+    }
+
+    static String state() {
+        return "stato=" + status + " · pronto=" + ready + " · " + diag() + " · vel=" + speed + " batt=" + battery
+                + " aut=" + rangeKm + " modo=" + mode + " fun=" + funWord + " err=" + error;
+    }
+
+    String internals() {
+        return "stage=" + stage + " bleAddr=0x" + Integer.toHexString(bleAddr) + " ctrl=0x" + Integer.toHexString(ctrlAddr)
+                + " plain=" + plain + " chunk=" + chunk + " g2Seen=" + g2Seen + " fun7d=" + fun7dSeen
+                + " mac=" + (gatt != null ? gatt.getDevice().getAddress() : "-") + " name=" + devName
+                + " tx=" + (tx != null ? tx.getUuid() : "-") + " rx=" + (rxChar != null ? rxChar.getUuid() : "-");
+    }
+
     private void send(byte[] f) {
         if (gatt == null || tx == null) return;
+        if (sniff && (sniffAll || (f[6] & 0xFF) != REG_QUICK)) Dbg.log("sc", "TX " + Dbg.hex(f));
         byte[] wire = plain ? withChecksum(f) : crypto.encrypt(f);
         txFrames++;
         for (int i = 0; i < wire.length; i += chunk) {
@@ -706,6 +736,7 @@ public class ScooterService extends Service {
             pos = start + total;
             byte[] dec = plain ? stripChecksum(f) : crypto.decrypt(f);
             if (dec != null && dec.length >= 7) onFrame(dec);
+            else if (sniff) Dbg.log("sc", "RX non decifrato " + Dbg.hex(f));
         }
         inbuf.reset();
         if (pos < b.length) inbuf.write(b, pos, b.length - pos);
@@ -722,6 +753,7 @@ public class ScooterService extends Service {
     }
 
     private void onFrame(byte[] d) {
+        if (sniff && (sniffAll || (d[6] & 0xFF) != REG_QUICK)) Dbg.log("sc", "RX " + Dbg.hex(d));
         int len = d[2] & 0xFF;
         int src = d[3] & 0xFF;
         int cmd = d[5] & 0xFF;
@@ -839,6 +871,7 @@ public class ScooterService extends Service {
 
     private void setStatus(String s) {
         status = s;
+        Dbg.log("sc", s);
         notifyUi();
     }
 

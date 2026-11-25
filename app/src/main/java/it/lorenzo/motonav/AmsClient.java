@@ -43,6 +43,8 @@ class AmsClient {
     volatile boolean ready = false;
     volatile String state = "non avviato";
     volatile String artist = "", title = "";
+    volatile String player = "", playback = "", volume = "";
+    volatile String supported = "";
 
     AmsClient(Context ctx, Handler h, Runnable onChange) {
         this.ctx = ctx;
@@ -165,6 +167,7 @@ class AmsClient {
     }
 
     private void changed() {
+        Dbg.log("ams", state + (volume.isEmpty() ? "" : " · volume " + volume) + (playback.isEmpty() ? "" : " · riproduzione " + playback));
         if (onChange != null) h.post(onChange);
     }
 
@@ -187,6 +190,9 @@ class AmsClient {
 
         @Override
         public void onServicesDiscovered(BluetoothGatt g, int st) {
+            StringBuilder sv = new StringBuilder();
+            for (BluetoothGattService x : g.getServices()) sv.append(x.getUuid().toString(), 0, 8).append(' ');
+            Dbg.log("ams", "servizi dell'iPhone: " + sv);
             h.post(() -> {
                 if (g != gatt) return;
                 BluetoothGattService s = g.getService(AMS);
@@ -208,6 +214,12 @@ class AmsClient {
                 if (entity != null) {
                     subscribe(entity);
                     // chiede artista (0) e titolo (2) della canzone in corso (entità 2 = traccia)
+                    // giocatore (entità 0): nome app, stato riproduzione, volume
+                    enqueue(() -> {
+                        entity.setValue(new byte[]{0, 0, 1, 2});
+                        entity.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                        if (!gatt.writeCharacteristic(entity)) done();
+                    });
                     enqueue(() -> {
                         entity.setValue(new byte[]{2, 0, 2});
                         entity.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
@@ -225,24 +237,37 @@ class AmsClient {
 
         @Override
         public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor d, int st) {
+            Dbg.log("ams", "iscrizione " + d.getCharacteristic().getUuid().toString().substring(0, 8) + " → stato " + st);
             h.post(AmsClient.this::done);
         }
 
         @Override
         public void onCharacteristicWrite(BluetoothGatt g, BluetoothGattCharacteristic c, int st) {
+            Dbg.log("ams", "scrittura " + c.getUuid().toString().substring(0, 8) + " " + Dbg.hex(c.getValue()) + " → stato " + st);
             h.post(AmsClient.this::done);
         }
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c) {
-            if (!ENTITY_UPDATE.equals(c.getUuid())) return;
             byte[] v = c.getValue();
+            if (REMOTE_CMD.equals(c.getUuid())) {
+                StringBuilder sb = new StringBuilder();
+                if (v != null) for (byte b : v) sb.append(b).append(' ');
+                supported = sb.toString().trim();
+                Dbg.log("ams", "comandi accettati dall'iPhone: " + supported);
+                return;
+            }
+            if (!ENTITY_UPDATE.equals(c.getUuid())) return;
             if (v == null || v.length < 3) return;
             final int ent = v[0], attr = v[1];
             final String text = new String(v, 3, v.length - 3, StandardCharsets.UTF_8);
             h.post(() -> {
                 if (ent == 2 && attr == 0) artist = text;
                 if (ent == 2 && attr == 2) title = text;
+                if (ent == 0 && attr == 0) player = text;
+                if (ent == 0 && attr == 1) playback = text;
+                if (ent == 0 && attr == 2) volume = text;
+                Dbg.log("ams", "dato " + ent + "/" + attr + " = " + text);
                 changed();
             });
         }

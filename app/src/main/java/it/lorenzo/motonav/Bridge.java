@@ -453,6 +453,18 @@ public class Bridge extends Service {
             case "adv":
                 if (s != null) s.restartAdv();
                 return "visibilità riavviata";
+            case "ams":
+                if (s == null) return "servizio spento";
+                if (w.length > 2 && "cmd".equals(w[2])) {
+                    s.amsCmd(Integer.parseInt(w[3]));
+                    return "comando Apple " + w[3] + " inviato";
+                }
+                if (w.length > 2 && "info".equals(w[2])) return s.amsInfo();
+                return s.startAms();
+            case "hold":
+                if (s == null) return "servizio spento";
+                s.holdBits(Integer.parseInt(w[2], 16), Long.parseLong(w[3]));
+                return "tengo premuto " + w[2] + " per " + w[3] + " ms";
             default:
                 return RemoteService.status + "\n" + RemoteService.diag() + "\n" + RemoteService.eventLog();
         }

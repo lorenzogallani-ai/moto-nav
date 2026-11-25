@@ -453,6 +453,28 @@ public class RemoteService extends Service {
         }
     }
 
+    /** Banco prove: avvia subito il canale Apple sull'iPhone collegato. */
+    String startAms() {
+        BluetoothDevice t = target();
+        if (t == null) return "iPhone non collegato";
+        h.post(() -> ams.start(t));
+        return "canale Apple: avvio su " + t.getAddress();
+    }
+
+    String amsInfo() {
+        if (ams == null) return "-";
+        return "stato=" + ams.state + " pronto=" + ams.ready + " app=" + ams.player + " riproduzione=" + ams.playback
+                + " volume=" + ams.volume + " brano=" + ams.nowPlaying() + " comandi=" + ams.supported;
+    }
+
+    void amsCmd(int id) {
+        h.post(() -> ams.command(id));
+    }
+
+    void holdBits(int bits, long ms) {
+        h.post(() -> hold(bits, ms));
+    }
+
     void restartAdv() {
         h.post(this::restartAdvertising);
     }

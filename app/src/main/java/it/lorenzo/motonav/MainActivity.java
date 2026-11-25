@@ -80,6 +80,8 @@ public class MainActivity extends Activity {
         store = new Store(this);
         setContentView(buildUi());
         if (Bridge.on(this) && Bridge.instance == null) startService(new Intent(this, Bridge.class));
+        // l'orologio arriva impostato sull'ora della Cina: la prima volta metto il fuso di Roma
+        if ("Asia/Shanghai".equals(java.util.TimeZone.getDefault().getID())) Bridge.setTz(this, "Europe/Rome");
         if (!store.setupShown()) {
             // primo avvio: si apre la configurazione guidata (permessi, OsmAnd, Home…)
             store.setSetupShown();

@@ -364,11 +364,19 @@ public class Bridge extends Service {
                 return setPref(w);
             case "bt":
                 return bt();
+            case "tz":
+                return setTz(this, w.length > 1 ? w[1] : "Europe/Rome");
+            case "launch": {
+                Intent li = getPackageManager().getLaunchIntentForPackage(w[1]);
+                if (li == null) return "nessuna schermata da aprire in " + w[1];
+                startActivity(li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                return "aperto " + w[1];
+            }
             case "update":
                 return update();
             case "help":
                 return "ping · stato · log N · sc start|stop|int|sniff on/off/all|poll on/off|raw DST CMD ARG HEX|read DST REG LEN|write DST REG HEX|mode N|light|pick MAC"
-                        + " · hid start|stop|diag|key BITS|raw HEX|kb HEX|forget|adv · gps on|off|xtra|reset · nav testo|lat,lon · open home|scooter|remote · sh comando · prefs · set chiave valore · bt · update";
+                        + " · hid start|stop|diag|key BITS|raw HEX|kb HEX|forget|adv · gps on|off|xtra|reset · nav testo|lat,lon · open home|scooter|remote · sh comando · prefs · set chiave valore · bt · tz [Europe/Rome] · launch pacchetto · update";
             default:
                 return "comando sconosciuto (help)";
         }
@@ -520,6 +528,21 @@ public class Bridge extends Service {
         else e.putString(w[1], v);
         e.apply();
         return w[1] + " = " + v;
+    }
+
+    /** Cambia il fuso orario dell'orologio (su questo modello il permesso è concesso a tutte le app). */
+    static String setTz(Context c, String id) {
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager) c.getSystemService(ALARM_SERVICE);
+            am.setTimeZone(id);
+            java.util.TimeZone.setDefault(null);
+            String r = "fuso orario: " + java.util.TimeZone.getDefault().getID() + " · ora " +
+                    new SimpleDateFormat("HH:mm", Locale.ITALY).format(new Date());
+            Dbg.log("ponte", r);
+            return r;
+        } catch (Exception e) {
+            return "non riesco a cambiare il fuso: " + e;
+        }
     }
 
     private String bt() {

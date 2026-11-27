@@ -171,8 +171,8 @@ public class ScooterActivity extends Activity {
     }
 
     private void command(String action, int mode) {
-        if (!ScooterService.ready) return;
-        startService(new Intent(this, ScooterService.class).setAction(action).putExtra(ScooterService.EXTRA_MODE, mode));
+        // le scritture sul monopattino sono disattivate finché non troviamo i registri giusti
+        android.widget.Toast.makeText(this, ScooterService.NO_WRITE, android.widget.Toast.LENGTH_LONG).show();
     }
 
     private android.app.AlertDialog pickDlg;

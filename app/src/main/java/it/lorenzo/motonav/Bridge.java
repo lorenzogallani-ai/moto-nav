@@ -375,7 +375,7 @@ public class Bridge extends Service {
             case "update":
                 return update();
             case "help":
-                return "ping · stato · log N · sc start|stop|int|sniff on/off/all|poll on/off|raw DST CMD ARG HEX|read DST REG LEN|write DST REG HEX|mode N|light|pick MAC"
+                return "ping · stato · log N · sc start|stop|int|sniff on/off/all|poll on/off|read DST REG LEN|scan [DST FROM TO]|dump|diff|pick MAC (scritture disattivate)"
                         + " · hid start|stop|diag|key BITS|raw HEX|kb HEX|forget|adv · gps on|off|xtra|reset · nav testo|lat,lon · open home|scooter|remote · sh comando · prefs · set chiave valore · bt · tz [Europe/Rome] · launch pacchetto · update";
             default:
                 return "comando sconosciuto (help)";
@@ -395,6 +395,18 @@ public class Bridge extends Service {
                 startService(new Intent(this, ScooterService.class).setAction(ScooterService.ACTION_PICK)
                         .putExtra("addr", w[2].toUpperCase(Locale.ROOT)).putExtra("name", w.length > 3 ? w[3] : "?"));
                 return "collego " + w[2];
+            case "scan": {
+                if (s == null) return "servizio spento";
+                int dst = w.length > 2 ? Integer.parseInt(w[2], 16) : 0x20;
+                int from = w.length > 3 ? Integer.parseInt(w[3], 16) : 0x00;
+                int to = w.length > 4 ? Integer.parseInt(w[4], 16) : 0xF0;
+                s.scan(dst, from, to);
+                return "leggo i registri da 0x" + Integer.toHexString(from) + " a 0x" + Integer.toHexString(to) + " (solo lettura)";
+            }
+            case "dump":
+                return s == null ? "servizio spento" : s.dump();
+            case "diff":
+                return s == null ? "servizio spento" : s.diff();
             case "int":
                 return ScooterService.state() + "\n" + (s != null ? s.internals() : "servizio spento")
                         + "\nvisti: " + ScooterService.seen;

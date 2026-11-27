@@ -587,30 +587,64 @@ public class ScooterService extends Service {
         }
     };
 
+    /*
+     * SCRITTURE DISATTIVATE (27/11/2026): sul Max G2 il registro 0xF1 non è la modalità ma la velocità
+     * massima della modalità Sport impostata nell'app, e la nostra scrittura l'ha abbassata a 15 km/h.
+     * Anche 0x75 e 0x7D non sono quello che pensavamo. Finché non troviamo i registri giusti leggendo
+     * (comando "sc scan" del banco prove), l'orologio non scrive niente sul monopattino.
+     */
+    static final String NO_WRITE = "Per ora si cambia dal monopattino: due pressioni sul pulsante = modalità, una = luci";
+
     void setMode(int m) {
-        if (stage != STAGE_COMM) return;
-        final int a = ctrlAddr < 0 ? ESC : ctrlAddr;
-        final int before = rawMode;
-        send(frame(a, WRITE_NR, REG_MODE, new byte[]{(byte) m, 0}));
-        if (g2Seen) send(frame(a, WRITE_NR, REG_GEAR_G2, new byte[]{(byte) m, 0}));
-        mode = m;
-        notifyUi();
-        h.postDelayed(() -> {
-            send(frame(a, READ, REG_MODE, new byte[]{0x02}));
-            send(frame(a, READ, REG_GEAR_G2, new byte[]{0x02}));
-        }, 500);
+        Dbg.log("sc", "cambio modalità bloccato (scritture disattivate)");
     }
 
     void toggleLight() {
-        if (stage != STAGE_COMM) return;
-        int cur = funWord < 0 ? 0 : funWord;
-        int next = cur ^ 0x0001;
-        int a = ctrlAddr < 0 ? ESC : ctrlAddr;
-        int reg = funReg();
-        send(frame(a, WRITE_NR, reg, new byte[]{(byte) (next & 0xFF), (byte) ((next >> 8) & 0xFF)}));
-        funWord = next;
-        notifyUi();
-        h.postDelayed(() -> send(frame(a, READ, reg, new byte[]{0x02})), 400);
+        Dbg.log("sc", "luci bloccate (scritture disattivate)");
+    }
+
+    // ---- lettura di tutti i registri per scoprire quelli giusti (solo lettura, nessun rischio) ----
+    final java.util.TreeMap<Integer, Integer> snap = new java.util.TreeMap<>();
+    final java.util.TreeMap<Integer, Integer> prevSnap = new java.util.TreeMap<>();
+    private volatile int scanDst = -1;
+
+    void scan(int dst, int from, int to) {
+        h.post(() -> {
+            if (stage != STAGE_COMM && !plain) {
+                Dbg.log("sc", "scansione: monopattino non collegato");
+                return;
+            }
+            prevSnap.clear();
+            prevSnap.putAll(snap);
+            snap.clear();
+            scanDst = dst;
+            int k = 0;
+            for (int r = from; r <= to; r += 0x10) {
+                final int reg = r;
+                h.postDelayed(() -> send(frame(dst, READ, reg, new byte[]{0x20})), 120L * k++);
+            }
+            h.postDelayed(() -> Dbg.log("sc", "scansione finita: " + snap.size() + " registri"), 120L * k + 800);
+        });
+    }
+
+    String dump() {
+        StringBuilder b = new StringBuilder();
+        int n = 0;
+        for (java.util.Map.Entry<Integer, Integer> e : snap.entrySet()) {
+            b.append(String.format("%02X=%d ", e.getKey(), e.getValue()));
+            if (++n % 8 == 0) b.append('\n');
+        }
+        return b.toString();
+    }
+
+    String diff() {
+        StringBuilder b = new StringBuilder();
+        for (java.util.Map.Entry<Integer, Integer> e : snap.entrySet()) {
+            Integer old = prevSnap.get(e.getKey());
+            if (old != null && !old.equals(e.getValue()))
+                b.append(String.format("%02X: %d → %d\n", e.getKey(), old, e.getValue()));
+        }
+        return b.length() == 0 ? "nessuna differenza" : b.toString();
     }
 
     // ================= pacchetti =================
@@ -646,6 +680,10 @@ public class ScooterService extends Service {
 
     /** Manda un pacchetto a mano: destinatario, comando, argomento, dati. */
     void raw(int dst, int cmd, int arg, byte[] data) {
+        if (cmd != READ) {
+            Dbg.log("sc", "comando 0x" + Integer.toHexString(cmd) + " bloccato: sono permesse solo letture");
+            return;
+        }
         h.post(() -> {
             if (gatt == null || tx == null || (!plain && crypto == null)) {
                 Dbg.log("sc", "prova: monopattino non collegato");
@@ -812,6 +850,9 @@ public class ScooterService extends Service {
                 h.postDelayed(this::startHandshake, 1000);
             }
         } else if (!fromBle && cmd == READ_ACK) {
+            if (scanDst >= 0 && src == scanDst && arg != REG_QUICK) {
+                for (int i = 0; i + 1 < p.length; i += 2) snap.put(arg + i / 2, (p[i] & 0xFF) | ((p[i + 1] & 0xFF) << 8));
+            }
             if (ctrlAddr < 0 && arg == REG_BATT) {
                 ctrlAddr = src;
                 phase = "dati da 0x" + Integer.toHexString(src);

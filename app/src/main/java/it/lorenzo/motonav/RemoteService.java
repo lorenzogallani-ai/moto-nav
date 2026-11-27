@@ -743,7 +743,7 @@ public class RemoteService extends Service {
         for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
             b.append(c.getUuid().toString().substring(4, 8)).append('#').append(c.getInstanceId());
             for (BluetoothGattDescriptor d : c.getDescriptors())
-                b.append('[').append(d.getUuid().toString().substring(4, 8)).append('#').append(d.getInstanceId()).append(']');
+                b.append('[').append(d.getUuid().toString().substring(4, 8)).append(']');
             b.append(' ');
         }
         return b.toString();
